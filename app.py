@@ -54,15 +54,24 @@ def norm(name):
 
 
 ALIASES = {
+    # Typos in roster spreadsheet
+    "tommy felletwood": "tommy fleetwood",
     "felletwood tommy": "tommy fleetwood",
+    "aldrich potgeiter": "aldrich potgieter",
+    # Højgaard -> hjgaard after NFKD normalization (ø drops the o)
+    "rasmus hojgaard": "rasmus hjgaard",
+    "nicolai hojgaard": "nicolai hjgaard",
+    # Neergaard spelling variants
+    "rasmus neegaardpetersen": "rasmus neergaardpetersen",
+    "neegaard petersen rasmus": "rasmus neergaardpetersen",
+    # Sungjae Im variants
     "sungjae im": "sung jae im",
-    "neegaard petersen rasmus": "rasmus neergaard petersen",
-    "potgeiter aldrich": "aldrich potgieter",
     "im sungjae": "sung jae im",
-    "cameron cam smith": "cameron smith",
-    "jose maria olazabal": "jose maria olazabal",
+    # Other known mismatches
     "fifa laopakdee": "pongsapak laopakdee",
     "johnny keefer": "john keefer",
+    "cameron cam smith": "cameron smith",
+    "jose maria olazabal": "jose maria olazabal",
 }
 
 
