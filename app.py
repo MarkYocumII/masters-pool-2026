@@ -339,24 +339,11 @@ def main():
         st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
 
     # ============================================
-    # MASTERS TOURNAMENT LEADERBOARD (Top 20)
+    # MASTERS LEADERBOARD + OWNERSHIP (combined)
     # ============================================
-    st.markdown("### ⛳ Masters Leaderboard (Top 20)")
+    st.markdown("### ⛳ Masters Leaderboard & Ownership (Top 20)")
     top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))[:20]
-    top_df = pd.DataFrame([{
-        "Pos": g["pos_str"],
-        "Golfer": g["name"],
-        "Score": g["score"],
-        "Thru": g["thru"] if g["thru"] else "-",
-        "Pool Pts": g["points"],
-    } for g in top_golfers])
-    st.dataframe(top_df, use_container_width=True, hide_index=True)
-
-    # ============================================
-    # OWNERSHIP COUNTS (most/least rostered golfers in top 20)
-    # ============================================
-    st.markdown("### 👥 Ownership (How Many Teams Rostered Each Top Golfer)")
-    ownership = []
+    combined_rows = []
     for g in top_golfers:
         gn = g["name_norm"]
         count = 0
@@ -368,15 +355,16 @@ def main():
             gp = set(gn.split())
             if len(rp & gp) >= 2:
                 count += 1
-        pct = count / 152 * 100
-        ownership.append({
+        combined_rows.append({
+            "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": g["score"],
+            "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
-            "Rostered By": f"{count} / 152",
-            "Own %": f"{pct:.0f}%",
+            "Rostered": f"{count}/152",
+            "Own %": f"{count/152*100:.0f}%",
         })
-    st.dataframe(pd.DataFrame(ownership), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(combined_rows), use_container_width=True, hide_index=True)
 
     # Footer
     st.markdown("---")
