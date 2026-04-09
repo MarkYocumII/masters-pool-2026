@@ -158,15 +158,15 @@ def fetch_leaderboard():
         pos = 1
         i = 0
         while i < len(active):
-            # Find all golfers with same score starting at i
             j = i
             while j < len(active) and active[j]["score"] == active[i]["score"]:
                 j += 1
             tied = j - i > 1
             for k in range(i, j):
                 active[k]["pos_int"] = pos
-                active[k]["pos_str"] = f"T{pos}" if tied else str(pos)
-            pos = j + 1  # next position skips tied spots
+                # Zero-pad so string sort = numeric sort (T01, T02, ... T14)
+                active[k]["pos_str"] = f"T{pos:02d}" if tied else f"{pos:02d}"
+            pos = j + 1
             i = j
 
         for g in active:
