@@ -17,12 +17,11 @@ try:
     from streamlit_autorefresh import st_autorefresh
     st_autorefresh(interval=180_000, key="datarefresh")
 except ImportError:
-    pass  # works without it, just no auto-refresh
+    pass
 
 
 # === SCORING RULES ===
 def points_for_position(pos, status=None):
-    """Convert tournament position to pool points."""
     if status and status.upper() in ("CUT", "MC", "WD", "DQ"):
         return 0
     if pos is None:
@@ -47,7 +46,6 @@ def points_for_position(pos, status=None):
 
 # === NAME NORMALIZATION ===
 def norm(name):
-    """Normalize a golfer name for matching."""
     s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
     s = s.lower().strip()
     s = re.sub(r"[^a-z\s]", "", s)
@@ -55,7 +53,6 @@ def norm(name):
     return s
 
 
-# Manual aliases for known mismatches
 ALIASES = {
     "felletwood tommy": "tommy fleetwood",
     "sungjae im": "sung jae im",
@@ -70,7 +67,6 @@ ALIASES = {
 
 
 def resolve_name(name):
-    """Normalize and apply aliases."""
     n = norm(name)
     return ALIASES.get(n, n)
 
@@ -78,7 +74,6 @@ def resolve_name(name):
 # === FETCH LIVE LEADERBOARD ===
 @st.cache_data(ttl=180)
 def fetch_leaderboard():
-    """Fetch live Masters leaderboard from ESPN API."""
     url = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -94,14 +89,13 @@ def fetch_leaderboard():
         if not events:
             return None, "No events found in ESPN data"
 
-        # Find the Masters event
         event = None
         for ev in events:
             if "masters" in ev.get("name", "").lower() or "augusta" in ev.get("name", "").lower():
                 event = ev
                 break
         if event is None:
-            event = events[0]  # fallback to first event
+            event = events[0]
 
         event_name = event.get("name", "Unknown Event")
         competitions = event.get("competitions", [])
@@ -112,25 +106,20 @@ def fetch_leaderboard():
         for idx, comp in enumerate(competitors):
             athlete = comp.get("athlete", {})
             name = athlete.get("displayName", "Unknown")
-
-            # ESPN returns competitors sorted by leaderboard position
-            # 'order' field = leaderboard rank, 'score' = score to par string
             order = comp.get("order", idx + 1)
             score_raw = comp.get("score", "-")
             score_display = str(score_raw) if score_raw else "-"
 
-            # Check for status (CUT, WD, DQ) — may be in status dict or sortOrder
             status_info = comp.get("status", {})
             status_type = status_info.get("type", {}).get("name", "") if isinstance(status_info, dict) else ""
 
             status = None
-            pos_int = order  # use ESPN sort order as position proxy
+            pos_int = order
 
             if status_type.upper() in ("CUT", "MC", "WD", "DQ"):
                 status = status_type.upper()
                 pos_int = None
 
-            # Determine "thru" from linescores
             thru = "-"
             linescores = comp.get("linescores", [])
             if linescores:
@@ -141,7 +130,6 @@ def fetch_leaderboard():
                     if thru >= 18:
                         thru = "F"
 
-            # Build position display string
             pos_str = str(order) if pos_int else (status or "-")
 
             golfers.append({
@@ -163,51 +151,31 @@ def fetch_leaderboard():
 # === LOAD ROSTERS ===
 @st.cache_data
 def load_rosters():
-    """Load the pool rosters CSV."""
     df = pd.read_csv("rosters.csv", encoding="utf-8")
     df["Golfer_Norm"] = df["Golfer"].apply(resolve_name)
     return df
 
 
-# === MAIN APP ===
-def main():
-    st.markdown("# ⛳ Masters Pool 2026")
-    st.markdown("##### Live Scoring Leaderboard — 152 Participants")
-
-    rosters = load_rosters()
-    golfers_live, event_info = fetch_leaderboard()
-
-    if golfers_live is None:
-        st.error(f"Could not fetch leaderboard: {event_info}")
-        st.info("The leaderboard will appear once tournament data is available from ESPN.")
-        return
-
-    st.caption(f"Event: **{event_info}** | Last updated: {datetime.now(timezone.utc).strftime('%I:%M %p UTC')} | Auto-refreshes every 3 min")
-
-    # Build lookup: norm_name -> golfer data
+# === COMPUTE SCORES ===
+def compute_pool_scores(rosters, golfers_live):
     live_lookup = {}
     for g in golfers_live:
         live_lookup[g["name_norm"]] = g
 
-    # Fuzzy fallback for unmatched names
     live_names = list(live_lookup.keys())
 
     def best_match(roster_norm):
-        """Try exact match first, then fuzzy."""
         if roster_norm in live_lookup:
             return live_lookup[roster_norm]
-        # Simple fuzzy: check if all parts of one name appear in the other
         roster_parts = set(roster_norm.split())
         for ln in live_names:
             live_parts = set(ln.split())
             if len(roster_parts & live_parts) >= 2:
                 return live_lookup[ln]
-            # Last name match
             if roster_norm.split()[-1] == ln.split()[-1] and len(roster_norm.split()[-1]) > 3:
                 return live_lookup[ln]
         return None
 
-    # Score each participant
     participant_scores = []
     participant_details = {}
 
@@ -244,16 +212,129 @@ def main():
         })
         participant_details[participant] = sorted(golfer_details, key=lambda x: x["Points"], reverse=True)
 
-    # Sort by points descending
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
     df_scores.index.name = "Rank"
 
-    # Main leaderboard
-    st.markdown("### Pool Leaderboard")
+    return df_scores, participant_details
 
-    # Search/filter
-    search = st.text_input("Search participant:", "", placeholder="Type a name...")
+
+# === MAIN APP ===
+def main():
+    st.markdown("# ⛳ Masters Pool 2026")
+    st.markdown("##### Live Scoring Leaderboard — 152 Participants")
+
+    rosters = load_rosters()
+    golfers_live, event_info = fetch_leaderboard()
+
+    if golfers_live is None:
+        st.error(f"Could not fetch leaderboard: {event_info}")
+        st.info("The leaderboard will appear once tournament data is available from ESPN.")
+        return
+
+    st.caption(f"**{event_info}** | Updated: {datetime.now(timezone.utc).strftime('%I:%M %p UTC')} | Auto-refreshes every 3 min")
+
+    df_scores, participant_details = compute_pool_scores(rosters, golfers_live)
+
+    # ============================================
+    # TOP 3 PODIUM
+    # ============================================
+    if len(df_scores) >= 3:
+        st.markdown("### Podium")
+        cols = st.columns(3)
+        medals = ["🥇", "🥈", "🥉"]
+        for i, col in enumerate(cols):
+            row = df_scores.iloc[i]
+            col.metric(
+                label=f"{medals[i]} {row['Participant']}",
+                value=f"{row['Points']} pts",
+                delta=f"{row['Golfers']} golfers",
+            )
+    st.markdown("")
+
+    # ============================================
+    # HOT & COLD GOLFERS (biggest point contributors right now)
+    # ============================================
+    st.markdown("### 🔥 Hottest Golfers (Most Pool Points)")
+    hot_golfers = sorted(golfers_live, key=lambda x: x["points"], reverse=True)[:10]
+    hot_df = pd.DataFrame([{
+        "Pos": g["pos_str"],
+        "Golfer": g["name"],
+        "Score": g["score"],
+        "Thru": g["thru"] if g["thru"] else "-",
+        "Pool Pts": g["points"],
+    } for g in hot_golfers])
+    st.dataframe(hot_df, use_container_width=True, hide_index=True)
+
+    # Cold golfers — worst scores among golfers that people actually rostered
+    rostered_names = set(rosters["Golfer_Norm"].unique())
+    live_lookup_temp = {g["name_norm"]: g for g in golfers_live}
+    rostered_live = []
+    for rn in rostered_names:
+        if rn in live_lookup_temp:
+            rostered_live.append(live_lookup_temp[rn])
+        else:
+            for ln, g in live_lookup_temp.items():
+                lp = set(ln.split())
+                rp = set(rn.split())
+                if len(lp & rp) >= 2:
+                    rostered_live.append(g)
+                    break
+
+    cold_golfers = sorted(
+        [g for g in rostered_live if g["score"] != "-"],
+        key=lambda x: (0 if x["pos_int"] is None else -x["pos_int"]),
+    )[:8]
+    if cold_golfers:
+        st.markdown("### 🥶 Struggling (Rostered Golfers Near the Bottom)")
+        cold_df = pd.DataFrame([{
+            "Pos": g["pos_str"],
+            "Golfer": g["name"],
+            "Score": g["score"],
+            "Thru": g["thru"] if g["thru"] else "-",
+            "Pool Pts": g["points"],
+        } for g in cold_golfers])
+        st.dataframe(cold_df, use_container_width=True, hide_index=True)
+
+    # ============================================
+    # BEST VALUE PICKS (most points per dollar spent)
+    # ============================================
+    st.markdown("### 💰 Best Value Picks (Points per Dollar)")
+    value_picks = []
+    seen = set()
+    for g in golfers_live:
+        if g["points"] <= 0:
+            continue
+        # Find this golfer's price from rosters
+        matches = rosters[rosters["Golfer_Norm"] == g["name_norm"]]
+        if matches.empty:
+            for _, r in rosters.iterrows():
+                rp = set(r["Golfer_Norm"].split())
+                gp = set(g["name_norm"].split())
+                if len(rp & gp) >= 2:
+                    matches = rosters[rosters["Golfer_Norm"] == r["Golfer_Norm"]]
+                    break
+        if not matches.empty and g["name"] not in seen:
+            price = matches.iloc[0]["Price"]
+            if price > 0:
+                value_picks.append({
+                    "Golfer": g["name"],
+                    "Score": g["score"],
+                    "Pool Pts": g["points"],
+                    "Price": f"${price:.2f}",
+                    "Pts/$": round(g["points"] / price, 1),
+                })
+                seen.add(g["name"])
+    if value_picks:
+        value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
+        st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
+
+    # ============================================
+    # FULL POOL LEADERBOARD
+    # ============================================
+    st.markdown("### 📊 Full Pool Leaderboard")
+
+    search = st.text_input("🔍 Search participant:", "", placeholder="Type a name...")
     if search:
         mask = df_scores["Participant"].str.lower().str.contains(search.lower())
         display_df = df_scores[mask]
@@ -266,8 +347,10 @@ def main():
         height=min(700, 35 * len(display_df) + 38),
     )
 
-    # Tournament leaderboard (top 20)
-    st.markdown("### Masters Leaderboard (Top 20)")
+    # ============================================
+    # MASTERS TOURNAMENT LEADERBOARD (Top 20)
+    # ============================================
+    st.markdown("### ⛳ Masters Leaderboard (Top 20)")
     top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))[:20]
     top_df = pd.DataFrame([{
         "Pos": g["pos_str"],
@@ -278,8 +361,35 @@ def main():
     } for g in top_golfers])
     st.dataframe(top_df, use_container_width=True, hide_index=True)
 
-    # Drill-down: view a participant's roster
-    st.markdown("### View Roster Detail")
+    # ============================================
+    # OWNERSHIP COUNTS (most/least rostered golfers in top 20)
+    # ============================================
+    st.markdown("### 👥 Ownership (How Many Teams Rostered Each Top Golfer)")
+    ownership = []
+    for g in top_golfers:
+        gn = g["name_norm"]
+        count = 0
+        for _, r in rosters.iterrows():
+            if r["Golfer_Norm"] == gn:
+                count += 1
+                continue
+            rp = set(r["Golfer_Norm"].split())
+            gp = set(gn.split())
+            if len(rp & gp) >= 2:
+                count += 1
+        ownership.append({
+            "Golfer": g["name"],
+            "Score": g["score"],
+            "Pool Pts": g["points"],
+            "Rostered By": f"{count} / 152",
+            "Own %": f"{count/152*100:.0f}%",
+        })
+    st.dataframe(pd.DataFrame(ownership), use_container_width=True, hide_index=True)
+
+    # ============================================
+    # ROSTER DRILL-DOWN
+    # ============================================
+    st.markdown("### 🔎 View Roster Detail")
     selected = st.selectbox(
         "Select a participant:",
         df_scores["Participant"].tolist(),
@@ -293,6 +403,7 @@ def main():
     # Footer
     st.markdown("---")
     st.caption("Masters Pool 2026 | Scoring: W=90, 2nd=65, 3rd=60, 4th=55, 5th=50, 6-10=45-25, 11-15=20, 16-20=15, 21-25=10, 26-30=5, 31+=2, MC=0")
+    st.caption("Data: ESPN | Built with Streamlit | Auto-refreshes every 3 minutes")
 
 
 if __name__ == "__main__":
