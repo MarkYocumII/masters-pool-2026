@@ -256,6 +256,22 @@ def main():
     df_scores, participant_details = compute_pool_scores(rosters, golfers_live)
 
     # ============================================
+    # TOP 3 PODIUM
+    # ============================================
+    if len(df_scores) >= 3:
+        st.markdown("### Podium")
+        cols = st.columns(3)
+        medals = ["🥇", "🥈", "🥉"]
+        for i, col in enumerate(cols):
+            row = df_scores.iloc[i]
+            col.metric(
+                label=f"{medals[i]} {row['Participant']}",
+                value=f"{row['Points']} pts",
+                delta=f"{row['Golfers']} golfers",
+            )
+    st.markdown("")
+
+    # ============================================
     # FULL POOL LEADERBOARD + ROSTER DETAIL (linked)
     # ============================================
     st.markdown("### 📊 Full Pool Leaderboard")
