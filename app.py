@@ -305,22 +305,39 @@ def main():
         st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
 
     # ============================================
-    # FULL POOL LEADERBOARD
+    # FULL POOL LEADERBOARD + ROSTER DETAIL (linked)
     # ============================================
     st.markdown("### 📊 Full Pool Leaderboard")
+    st.caption("Select a participant to view their roster below")
 
-    search = st.text_input("🔍 Search participant:", "", placeholder="Type a name...")
-    if search:
-        mask = df_scores["Participant"].str.lower().str.contains(search.lower())
-        display_df = df_scores[mask]
+    participant_list = df_scores["Participant"].tolist()
+
+    selected = st.selectbox(
+        "🔍 Find participant:",
+        ["-- Show All --"] + participant_list,
+    )
+
+    if selected and selected != "-- Show All --":
+        # Highlight selected in leaderboard
+        display_df = df_scores[df_scores["Participant"] == selected]
     else:
         display_df = df_scores
 
     st.dataframe(
-        display_df,
+        display_df if selected == "-- Show All --" or not selected else df_scores,
         use_container_width=True,
-        height=min(700, 35 * len(display_df) + 38),
+        height=min(700, 35 * min(len(df_scores), 20) + 38),
     )
+
+    # Show roster detail for selected participant
+    if selected and selected != "-- Show All --" and selected in participant_details:
+        st.markdown(f"---")
+        detail_df = pd.DataFrame(participant_details[selected])
+        total = detail_df["Points"].sum()
+        rank = participant_list.index(selected) + 1
+        st.markdown(f"### 🔎 {selected}")
+        st.markdown(f"**Rank #{rank}** — {len(detail_df)} golfers — **{total} points**")
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
     # ============================================
     # MASTERS TOURNAMENT LEADERBOARD (Top 20)
@@ -361,20 +378,6 @@ def main():
             "Own %": f"{pct:.0f}%",
         })
     st.dataframe(pd.DataFrame(ownership), use_container_width=True, hide_index=True)
-
-    # ============================================
-    # ROSTER DRILL-DOWN
-    # ============================================
-    st.markdown("### 🔎 View Roster Detail")
-    selected = st.selectbox(
-        "Select a participant:",
-        df_scores["Participant"].tolist(),
-    )
-    if selected and selected in participant_details:
-        detail_df = pd.DataFrame(participant_details[selected])
-        total = detail_df["Points"].sum()
-        st.markdown(f"**{selected}** — {len(detail_df)} golfers — **{total} points**")
-        st.dataframe(detail_df, use_container_width=True, hide_index=True)
 
     # Footer
     st.markdown("---")
