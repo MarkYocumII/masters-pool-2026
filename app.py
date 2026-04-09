@@ -158,7 +158,7 @@ def fetch_leaderboard():
 
 
 # === LOAD ROSTERS ===
-@st.cache_data
+@st.cache_data(ttl=300)
 def load_rosters():
     df = pd.read_csv("rosters.csv", encoding="utf-8")
     df["Golfer_Norm"] = df["Golfer"].apply(resolve_name)
@@ -177,12 +177,22 @@ def compute_pool_scores(rosters, golfers_live):
         if roster_norm in live_lookup:
             return live_lookup[roster_norm]
         roster_parts = set(roster_norm.split())
+        # Pass 1: 2+ word overlap
         for ln in live_names:
             live_parts = set(ln.split())
             if len(roster_parts & live_parts) >= 2:
                 return live_lookup[ln]
+        # Pass 2: last name exact match (>3 chars)
+        for ln in live_names:
             if roster_norm.split()[-1] == ln.split()[-1] and len(roster_norm.split()[-1]) > 3:
                 return live_lookup[ln]
+        # Pass 3: first name match + last name starts with same 3 chars (catches hojgaard/hjgaard)
+        for ln in live_names:
+            r_parts = roster_norm.split()
+            l_parts = ln.split()
+            if len(r_parts) >= 2 and len(l_parts) >= 2:
+                if r_parts[0] == l_parts[0] and r_parts[-1][:3] == l_parts[-1][:3]:
+                    return live_lookup[ln]
         return None
 
     participant_scores = []
