@@ -256,55 +256,6 @@ def main():
     df_scores, participant_details = compute_pool_scores(rosters, golfers_live)
 
     # ============================================
-    # TOP 3 PODIUM
-    # ============================================
-    if len(df_scores) >= 3:
-        st.markdown("### Podium")
-        cols = st.columns(3)
-        medals = ["🥇", "🥈", "🥉"]
-        for i, col in enumerate(cols):
-            row = df_scores.iloc[i]
-            col.metric(
-                label=f"{medals[i]} {row['Participant']}",
-                value=f"{row['Points']} pts",
-                delta=f"{row['Golfers']} golfers",
-            )
-    st.markdown("")
-
-    # ============================================
-    # BEST VALUE PICKS (most points per dollar spent)
-    # ============================================
-    st.markdown("### 💰 Best Value Picks (Points per Dollar)")
-    value_picks = []
-    seen = set()
-    for g in golfers_live:
-        if g["points"] <= 0:
-            continue
-        # Find this golfer's price from rosters
-        matches = rosters[rosters["Golfer_Norm"] == g["name_norm"]]
-        if matches.empty:
-            for _, r in rosters.iterrows():
-                rp = set(r["Golfer_Norm"].split())
-                gp = set(g["name_norm"].split())
-                if len(rp & gp) >= 2:
-                    matches = rosters[rosters["Golfer_Norm"] == r["Golfer_Norm"]]
-                    break
-        if not matches.empty and g["name"] not in seen:
-            price = matches.iloc[0]["Price"]
-            if price > 0:
-                value_picks.append({
-                    "Golfer": g["name"],
-                    "Score": g["score"],
-                    "Pool Pts": g["points"],
-                    "Price": f"${price:.2f}",
-                    "Pts/$": round(g["points"] / price, 1),
-                })
-                seen.add(g["name"])
-    if value_picks:
-        value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
-        st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
-
-    # ============================================
     # FULL POOL LEADERBOARD + ROSTER DETAIL (linked)
     # ============================================
     st.markdown("### 📊 Full Pool Leaderboard")
@@ -338,6 +289,38 @@ def main():
         st.markdown(f"### 🔎 {selected}")
         st.markdown(f"**Rank #{rank}** — {len(detail_df)} golfers — **{total} points**")
         st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+    # ============================================
+    # BEST VALUE PICKS (most points per dollar spent)
+    # ============================================
+    st.markdown("### 💰 Best Value Picks (Points per Dollar)")
+    value_picks = []
+    seen = set()
+    for g in golfers_live:
+        if g["points"] <= 0:
+            continue
+        matches = rosters[rosters["Golfer_Norm"] == g["name_norm"]]
+        if matches.empty:
+            for _, r in rosters.iterrows():
+                rp = set(r["Golfer_Norm"].split())
+                gp = set(g["name_norm"].split())
+                if len(rp & gp) >= 2:
+                    matches = rosters[rosters["Golfer_Norm"] == r["Golfer_Norm"]]
+                    break
+        if not matches.empty and g["name"] not in seen:
+            price = matches.iloc[0]["Price"]
+            if price > 0:
+                value_picks.append({
+                    "Golfer": g["name"],
+                    "Score": g["score"],
+                    "Pool Pts": g["points"],
+                    "Price": f"${price:.2f}",
+                    "Pts/$": round(g["points"] / price, 1),
+                })
+                seen.add(g["name"])
+    if value_picks:
+        value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
+        st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
 
     # ============================================
     # MASTERS TOURNAMENT LEADERBOARD (Top 20)
