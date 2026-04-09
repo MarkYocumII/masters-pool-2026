@@ -384,8 +384,8 @@ def main():
     # ============================================
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
     # ============================================
-    st.markdown("### ⛳ Masters Leaderboard & Ownership (Top 20)")
-    top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))[:20]
+    st.markdown("### ⛳ Masters Leaderboard & Ownership (Full Field)")
+    top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))
     combined_rows = []
     for g in top_golfers:
         gn = g["name_norm"]
