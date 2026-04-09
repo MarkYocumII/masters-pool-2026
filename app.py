@@ -253,50 +253,6 @@ def main():
     st.markdown("")
 
     # ============================================
-    # HOT & COLD GOLFERS (biggest point contributors right now)
-    # ============================================
-    st.markdown("### 🔥 Hottest Golfers (Most Pool Points)")
-    hot_golfers = sorted(golfers_live, key=lambda x: x["points"], reverse=True)[:10]
-    hot_df = pd.DataFrame([{
-        "Pos": g["pos_str"],
-        "Golfer": g["name"],
-        "Score": g["score"],
-        "Thru": g["thru"] if g["thru"] else "-",
-        "Pool Pts": g["points"],
-    } for g in hot_golfers])
-    st.dataframe(hot_df, use_container_width=True, hide_index=True)
-
-    # Cold golfers — worst scores among golfers that people actually rostered
-    rostered_names = set(rosters["Golfer_Norm"].unique())
-    live_lookup_temp = {g["name_norm"]: g for g in golfers_live}
-    rostered_live = []
-    for rn in rostered_names:
-        if rn in live_lookup_temp:
-            rostered_live.append(live_lookup_temp[rn])
-        else:
-            for ln, g in live_lookup_temp.items():
-                lp = set(ln.split())
-                rp = set(rn.split())
-                if len(lp & rp) >= 2:
-                    rostered_live.append(g)
-                    break
-
-    cold_golfers = sorted(
-        [g for g in rostered_live if g["score"] != "-"],
-        key=lambda x: (0 if x["pos_int"] is None else -x["pos_int"]),
-    )[:8]
-    if cold_golfers:
-        st.markdown("### 🥶 Struggling (Rostered Golfers Near the Bottom)")
-        cold_df = pd.DataFrame([{
-            "Pos": g["pos_str"],
-            "Golfer": g["name"],
-            "Score": g["score"],
-            "Thru": g["thru"] if g["thru"] else "-",
-            "Pool Pts": g["points"],
-        } for g in cold_golfers])
-        st.dataframe(cold_df, use_container_width=True, hide_index=True)
-
-    # ============================================
     # BEST VALUE PICKS (most points per dollar spent)
     # ============================================
     st.markdown("### 💰 Best Value Picks (Points per Dollar)")
@@ -377,12 +333,13 @@ def main():
             gp = set(gn.split())
             if len(rp & gp) >= 2:
                 count += 1
+        pct = count / 152 * 100
         ownership.append({
             "Golfer": g["name"],
             "Score": g["score"],
             "Pool Pts": g["points"],
             "Rostered By": f"{count} / 152",
-            "Own %": f"{count/152*100:.0f}%",
+            "Own %": f"{pct:.0f}%",
         })
     st.dataframe(pd.DataFrame(ownership), use_container_width=True, hide_index=True)
 
