@@ -112,6 +112,9 @@ def fetch_leaderboard():
             return None, f"No competitions in event: {event_name}"
 
         competitors = competitions[0].get("competitors", [])
+
+        # First pass: collect raw data sorted by ESPN order
+        raw_golfers = []
         for idx, comp in enumerate(competitors):
             athlete = comp.get("athlete", {})
             name = athlete.get("displayName", "Unknown")
@@ -123,11 +126,8 @@ def fetch_leaderboard():
             status_type = status_info.get("type", {}).get("name", "") if isinstance(status_info, dict) else ""
 
             status = None
-            pos_int = order
-
             if status_type.upper() in ("CUT", "MC", "WD", "DQ"):
                 status = status_type.upper()
-                pos_int = None
 
             thru = "-"
             linescores = comp.get("linescores", [])
@@ -139,17 +139,58 @@ def fetch_leaderboard():
                     if thru >= 18:
                         thru = "F"
 
-            pos_str = str(order) if pos_int else (status or "-")
-
-            golfers.append({
+            raw_golfers.append({
                 "name": name,
                 "name_norm": resolve_name(name),
-                "pos_str": pos_str,
-                "pos_int": pos_int,
+                "order": order,
                 "status": status,
                 "score": score_display,
                 "thru": thru,
-                "points": points_for_position(pos_int, status),
+            })
+
+        # Second pass: compute tied positions
+        # Golfers with the same score get the same position (e.g. T1, T1, 3, T4, T4, 6...)
+        # Group active golfers by score, assign position = first index in that group
+        active = [g for g in raw_golfers if g["status"] is None]
+        inactive = [g for g in raw_golfers if g["status"] is not None]
+
+        # Active golfers are already sorted by ESPN order; group consecutive same-score runs
+        pos = 1
+        i = 0
+        while i < len(active):
+            # Find all golfers with same score starting at i
+            j = i
+            while j < len(active) and active[j]["score"] == active[i]["score"]:
+                j += 1
+            tied = j - i > 1
+            for k in range(i, j):
+                active[k]["pos_int"] = pos
+                active[k]["pos_str"] = f"T{pos}" if tied else str(pos)
+            pos = j + 1  # next position skips tied spots
+            i = j
+
+        for g in active:
+            golfers.append({
+                "name": g["name"],
+                "name_norm": g["name_norm"],
+                "pos_str": g["pos_str"],
+                "pos_int": g["pos_int"],
+                "status": None,
+                "score": g["score"],
+                "thru": g["thru"],
+                "points": points_for_position(g["pos_int"], None),
+            })
+
+        for g in inactive:
+            golfers.append({
+                "name": g["name"],
+                "name_norm": g["name_norm"],
+                "pos_str": g["status"] or "-",
+                "pos_int": None,
+                "status": g["status"],
+                "score": g["score"],
+                "thru": g["thru"],
+                "points": 0,
             })
     except Exception as e:
         return None, f"Parse error: {e}"
