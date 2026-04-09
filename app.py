@@ -250,6 +250,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Golfer": row["Golfer"],
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
+                    "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
                     "Score": match["score"],
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
@@ -259,6 +260,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Golfer": row["Golfer"],
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
+                    "_pos_sort": 999,
                     "Score": "-",
                     "Thru": "-",
                     "Points": 0,
@@ -270,7 +272,7 @@ def compute_pool_scores(rosters, golfers_live):
             "Points": total_pts,
             "Golfers": len(group),
         })
-        participant_details[participant] = sorted(golfer_details, key=lambda x: x["Points"], reverse=True)
+        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
@@ -340,7 +342,7 @@ def main():
     # Show roster detail for selected participant
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
-        detail_df = pd.DataFrame(participant_details[selected])
+        detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
@@ -397,6 +399,7 @@ def main():
             if len(rp & gp) >= 2:
                 count += 1
         combined_rows.append({
+            "#": g["pos_int"] if g["pos_int"] else 999,
             "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": g["score"],
@@ -405,7 +408,8 @@ def main():
             "Rostered": f"{count}/152",
             "Own %": f"{count/152*100:.0f}%",
         })
-    st.dataframe(pd.DataFrame(combined_rows), use_container_width=True, hide_index=True)
+    combined_df = pd.DataFrame(combined_rows).sort_values("#").drop(columns=["#"]).reset_index(drop=True)
+    st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
     st.markdown("---")
