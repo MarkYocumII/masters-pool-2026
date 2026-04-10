@@ -401,6 +401,11 @@ def golf_dataframe(df, height=None, **kwargs):
 
     styled = display.style.format(fmt, na_rep="-", precision=0)
 
+    # Right-align Today, Thru, Score, Points, Pool Pts, Own %
+    right_cols = [c for c in display.columns if c in ("Today", "Thru", "Score", "Points", "Pool Pts", "Own %", "Pts/$")]
+    if right_cols:
+        styled = styled.set_properties(subset=right_cols, **{"text-align": "right"})
+
     kw = {**kwargs}
     if height:
         kw["height"] = height
