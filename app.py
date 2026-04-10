@@ -149,16 +149,24 @@ def fetch_leaderboard():
                             if ("AM" in dv or "PM" in dv or "PDT" in dv or
                                 "PST" in dv or "EDT" in dv or "EST" in dv):
                                 try:
+                                    # Determine timezone offset to convert to EST/EDT
+                                    offset_hours = 0
+                                    if " PDT " in dv:
+                                        offset_hours = 3  # PDT -> EDT = +3
+                                    elif " PST " in dv:
+                                        offset_hours = 3  # PST -> EST = +3
+                                    # EDT/EST already Eastern, no offset
                                     cleaned = dv
                                     for tz in (" PDT ", " PST ", " EDT ", " EST "):
                                         cleaned = cleaned.replace(tz, " ")
                                     dt = __import__("datetime").datetime.strptime(
                                         cleaned, "%a %b %d %H:%M:%S %Y")
+                                    dt = dt + __import__("datetime").timedelta(hours=offset_hours)
                                     h = dt.hour
                                     ampm = "AM" if h < 12 else "PM"
                                     if h > 12: h -= 12
                                     if h == 0: h = 12
-                                    tee_time_str = f"{h}:{dt.minute:02d} {ampm}"
+                                    tee_time_str = f"T{h}:{dt.minute:02d} {ampm}"
                                 except Exception:
                                     pass
 
