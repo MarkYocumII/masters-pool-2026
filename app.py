@@ -401,15 +401,16 @@ def golf_dataframe(df, height=None, **kwargs):
 
     styled = display.style.format(fmt, na_rep="-", precision=0)
 
-    # Right-align Today, Thru, Score, Points, Pool Pts, Own %
-    right_cols = [c for c in display.columns if c in ("Today", "Thru", "Score", "Points", "Pool Pts", "Own %", "Pts/$")]
-    if right_cols:
-        styled = styled.set_properties(subset=right_cols, **{"text-align": "right"})
+    # Build column_config for right-alignment
+    col_config = {}
+    for col in display.columns:
+        if col in ("Today", "Thru", "Score", "Points", "Pool Pts", "Own %", "Pts/$", "Pos"):
+            col_config[col] = st.column_config.TextColumn(col, alignment="right")
 
     kw = {**kwargs}
     if height:
         kw["height"] = height
-    st.dataframe(styled, **kw)
+    st.dataframe(styled, column_config=col_config, **kw)
 
 
 # === LOAD ROSTERS ===
