@@ -405,37 +405,40 @@ def golf_dataframe(df, height=None, **kwargs):
         display["Thru"] = display.apply(_merge_thru, axis=1)
         display = display.drop(columns=["tee_time"])
 
-    # Build Styler format dict
-    fmt = {}
-    for col in display.columns:
-        if col in ("Score", "Today"):
-            fmt[col] = _fmt_golf_score
-        elif col == "Thru" and display["Thru"].dtype != object:
-            # Only format if still numeric (no tee times merged)
-            fmt[col] = _fmt_thru
-        elif col == "Own %":
-            fmt[col] = _fmt_own_pct
-
-    # For projected MC golfers: fade the text by appending indicator
+    # MC indicator on golfer names
     if "_proj_mc" in display.columns:
         proj_mc_mask = display["_proj_mc"].fillna(False)
-        # Add MC indicator to Golfer name for projected misses
         if "Golfer" in display.columns:
             display.loc[proj_mc_mask, "Golfer"] = display.loc[proj_mc_mask, "Golfer"] + "  (MC)"
         display = display.drop(columns=["_proj_mc"])
 
-    styled = display.style.format(fmt, na_rep="-", precision=0)
+    # Score/Today: replace 999 with NaN so NumberColumn shows blank
+    for col in ["Score", "Today"]:
+        if col in display.columns:
+            display[col] = display[col].replace(999, pd.NA).astype("Int64")
 
-    # Build column_config for right-alignment
+    # Own %: format as string with % so it doesn't need NumberColumn
+    if "Own %" in display.columns:
+        display["Own %"] = display["Own %"].apply(lambda v: f"{v}%" if pd.notna(v) and v != 999 else "-")
+
+    # column_config: NumberColumn for Score/Today (numeric sort + format)
     col_config = {}
     for col in display.columns:
-        if col in ("Today", "Thru", "Score", "Points", "Pool Pts", "Own %", "Pts/$", "Pos"):
+        if col in ("Score", "Today"):
+            col_config[col] = st.column_config.NumberColumn(
+                col, format="%+d", alignment="right"
+            )
+        elif col in ("Points", "Pool Pts"):
+            col_config[col] = st.column_config.NumberColumn(
+                col, format="%d", alignment="right"
+            )
+        elif col in ("Thru", "Pos", "Own %"):
             col_config[col] = st.column_config.TextColumn(col, alignment="right")
 
     kw = {**kwargs}
     if height:
         kw["height"] = height
-    st.dataframe(styled, column_config=col_config, **kw)
+    st.dataframe(display, column_config=col_config, **kw)
 
 
 # === LOAD ROSTERS ===
