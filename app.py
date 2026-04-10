@@ -242,6 +242,15 @@ def score_to_int(score_str):
         return None
 
 
+def force_score_numeric(df):
+    """Force Score and Today columns to numeric dtype so Streamlit sorts as numbers.
+    If any non-numeric value snuck in, coerce it to NaN."""
+    for col in ["Score", "Today"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+    return df
+
+
 # === LOAD ROSTERS ===
 @st.cache_data(ttl=300)
 def load_rosters():
@@ -389,6 +398,7 @@ def main():
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
         detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
+        detail_df = force_score_numeric(detail_df)
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
@@ -425,7 +435,8 @@ def main():
                 seen.add(g["name"])
     if value_picks:
         value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
-        st.dataframe(pd.DataFrame(value_picks[:12]), use_container_width=True, hide_index=True)
+        vp_df = force_score_numeric(pd.DataFrame(value_picks[:12]))
+        st.dataframe(vp_df, use_container_width=True, hide_index=True)
 
     # ============================================
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
@@ -457,6 +468,7 @@ def main():
         })
     combined_df = pd.DataFrame(combined_rows)
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
+    combined_df = force_score_numeric(combined_df)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
