@@ -317,8 +317,9 @@ def golf_dataframe(df, height=None, **kwargs):
     renders the formatted values but sorts by the underlying data."""
     display = df.copy()
     display = display[[c for c in display.columns if not c.startswith("_")]]
+    display = force_numeric_cols(display)
 
-    # Build format dict for the Styler
+    # Build format dict for the Styler — apply to ALL matching columns
     fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
@@ -328,7 +329,8 @@ def golf_dataframe(df, height=None, **kwargs):
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
 
-    styled = display.style.format(fmt, na_rep="-")
+    # na_rep handles any NA that the formatter doesn't catch
+    styled = display.style.format(fmt, na_rep="-", precision=0)
 
     kw = {**kwargs}
     if height:
