@@ -375,18 +375,16 @@ def golf_dataframe(df, height=None, **kwargs):
 
     # Today: format scores nicely but keep as string (may contain tee times)
     if "Today" in display.columns:
-        # Convert tee times to "-" so Today only has score values
-        # (tee times already show in Thru column)
-        def _clean_today(v):
+        # Same as Score: Int64 with 999 sentinel for not-started.
+        # Tee times -> 999 (show in Thru column instead).
+        # Styler formats: 0->E, 999->"-", negative as-is, positive->+N
+        def _today_to_int(v):
             s = str(v).strip()
             if s.startswith("T") and ("AM" in s or "PM" in s):
-                return None  # tee time -> treat as not started
-            return score_to_int(s)
-        display["Today"] = display["Today"].apply(_clean_today)
-        # Fill None with a large number so it sorts last, Styler will format as "-"
-        display["Today"] = pd.to_numeric(display["Today"], errors="coerce")
-        # Replace NaN with 999 — Styler will show as "-"
-        display["Today"] = display["Today"].fillna(999).astype(int)
+                return 999
+            n = score_to_int(s)
+            return n if n is not None else 999
+        display["Today"] = display["Today"].apply(_today_to_int).astype(int)
 
     # Thru: convert to numeric, then format. Tee times handled below.
     if "Thru" in display.columns and "tee_time" not in display.columns:
