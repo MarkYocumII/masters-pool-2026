@@ -233,14 +233,14 @@ def score_display(score_str):
     Uses numeric representation: -5, -1, 0, +1, +5.
     Streamlit sorts numbers correctly in both directions."""
     s = str(score_str).strip()
-    if s == "-" or s == "":
-        return None  # will be NaN -> sorts last
+    if s == "-" or s == "" or s == "None":
+        return "-"
     if s == "E":
         return 0
     try:
         return int(s)
     except ValueError:
-        return None
+        return "-"
 
 
 # === LOAD ROSTERS ===
@@ -307,8 +307,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
-                    "Score": None,
-                    "Today": None,
+                    "Score": "-",
+                    "Today": "-",
                     "Thru": "-",
                     "Points": 0,
                 })
