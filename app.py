@@ -147,12 +147,21 @@ def fetch_leaderboard():
                     if prev_holes and len(prev_holes) >= 18:
                         thru = "-"  # finished prior round, not started current
 
+            # Today's round score
+            today = "-"
+            if linescores and len(linescores) >= 1:
+                latest = linescores[-1]
+                today_val = latest.get("displayValue", "-")
+                if today_val and today_val != "-":
+                    today = today_val
+
             raw_golfers.append({
                 "name": name,
                 "name_norm": resolve_name(name),
                 "order": order,
                 "status": status,
                 "score": score_display,
+                "today": today,
                 "thru": thru,
             })
 
@@ -185,6 +194,7 @@ def fetch_leaderboard():
                 "pos_int": g["pos_int"],
                 "status": None,
                 "score": g["score"],
+                "today": g["today"],
                 "thru": g["thru"],
                 "points": points_for_position(g["pos_int"], None),
             })
@@ -197,6 +207,7 @@ def fetch_leaderboard():
                 "pos_int": None,
                 "status": g["status"],
                 "score": g["score"],
+                "today": g.get("today", "-"),
                 "thru": g["thru"],
                 "points": 0,
             })
@@ -260,6 +271,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
                     "Score": match["score"],
+                    "Today": match.get("today", "-"),
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
                 })
@@ -270,6 +282,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Position": "-",
                     "_pos_sort": 999,
                     "Score": "-",
+                    "Today": "-",
                     "Thru": "-",
                     "Points": 0,
                 })
@@ -411,10 +424,11 @@ def main():
             "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": g["score"],
+            "Today": g.get("today", "-"),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
-            "Rostered": f"{count}/152",
-            "Own %": f"{count/152*100:.0f}%",
+            "Rostered": f"{count}/154",
+            "Own %": f"{count/154*100:.0f}%",
         })
     combined_df = pd.DataFrame(combined_rows).sort_values("#").drop(columns=["#"]).reset_index(drop=True)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
