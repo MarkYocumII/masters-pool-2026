@@ -485,16 +485,40 @@ def compute_pool_scores(rosters, golfers_live):
                     return live_lookup[ln]
         return None
 
+    # Build EV lookup from live golfer data
+    # EV = expected final pool points based on current position probability
+    # Simple model: points_for_position * probability of finishing there
+    # Approximate: current points * decay factor based on rounds remaining
+    # Better: use the position directly as a proxy for final EV
+    # Golfers in top positions have higher EV, those at the cut have ~2 EV
+    def _golfer_ev(g):
+        """Estimate expected final pool points for a golfer based on current position."""
+        if g.get("proj_mc") or g.get("status"):
+            return 0.0
+        pos = g.get("pos_int")
+        if pos is None:
+            return 0.0
+        # Current position points as base EV, with regression toward mean
+        # Top golfers hold position better, bottom golfers regress more
+        current_pts = points_for_position(pos, None)
+        # Rough regression: EV = current_pts * 0.6 + average_pts * 0.4
+        # Average golfer making the cut scores ~10-15 points
+        avg_pts = 12
+        ev = current_pts * 0.6 + avg_pts * 0.4
+        return round(ev, 1)
+
     participant_scores = []
     participant_details = {}
 
     for participant, group in rosters.groupby("Participant"):
         total_pts = 0
+        total_ev = 0.0
         golfer_details = []
         for _, row in group.iterrows():
             match = best_match(row["Golfer_Norm"])
             if match:
                 pts = match["points"]
+                ev = _golfer_ev(match)
                 golfer_details.append({
                     "Golfer": row["Golfer"],
                     "Price": f"${row['Price']:.2f}",
@@ -506,6 +530,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Thru": match["thru"],
                     "tee_time": match.get("tee_time", ""),
                     "Points": pts,
+                    "EV": ev,
                 })
             else:
                 golfer_details.append({
@@ -519,13 +544,16 @@ def compute_pool_scores(rosters, golfers_live):
                     "Thru": None,
                     "tee_time": "",
                     "Points": 0,
+                    "EV": 0.0,
                 })
             total_pts += golfer_details[-1]["Points"]
+            total_ev += golfer_details[-1]["EV"]
 
         making_cut = sum(1 for g in golfer_details if not g.get("_proj_mc", False))
         participant_scores.append({
             "Participant": participant,
             "Points": total_pts,
+            "EV": round(total_ev, 1),
             "Golfers": len(group),
             "Making Cut": making_cut,
         })
