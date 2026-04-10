@@ -130,22 +130,36 @@ def fetch_leaderboard():
                 status = status_type.upper()
 
             thru = "-"
+            tee_time = None
             linescores = comp.get("linescores", [])
             if linescores:
-                # Find the current/latest round: last round with hole data
-                current_round = linescores[-1]  # latest round entry
+                current_round = linescores[-1]
                 hole_scores = current_round.get("linescores", [])
                 if hole_scores:
                     thru = len(hole_scores)
                     if thru >= 18:
                         thru = "F"
-                elif len(linescores) >= 2:
-                    # Latest round has no holes yet — player hasn't started
-                    # Check if prior round is complete
-                    prev_round = linescores[-2]
-                    prev_holes = prev_round.get("linescores", [])
-                    if prev_holes and len(prev_holes) >= 18:
-                        thru = "-"  # finished prior round, not started current
+                else:
+                    # Not started current round — extract tee time
+                    stats = current_round.get("statistics", {})
+                    cats = stats.get("categories", []) if stats else []
+                    for cat in cats:
+                        for s in cat.get("stats", []):
+                            dv = s.get("displayValue", "")
+                            if "AM" in dv or "PM" in dv:
+                                # Parse "Fri Apr 10 12:32:00 PDT 2026" to "12:32 PM"
+                                try:
+                                    from datetime import datetime
+                                    dt = datetime.strptime(dv.replace(" PDT ", " ").replace(" PST ", " ").replace(" EDT ", " ").replace(" EST ", " "),
+                                                           "%a %b %d %H:%M:%S %Y")
+                                    tee_time = dt.strftime("%-I:%M %p").lstrip("0")
+                                except Exception:
+                                    # Fallback: just grab HH:MM from the string
+                                    import re
+                                    m = re.search(r"(\d{1,2}:\d{2}):\d{2}\s*(AM|PM|PDT|PST|EDT|EST)", dv)
+                                    if m:
+                                        tee_time = m.group(1)
+                    thru = tee_time if tee_time else "-"
 
             # Today's round score
             today = "-"
@@ -154,6 +168,8 @@ def fetch_leaderboard():
                 today_val = latest.get("displayValue", "-")
                 if today_val and today_val != "-":
                     today = today_val
+                elif tee_time:
+                    today = "-"  # not started yet, keep dash
 
             raw_golfers.append({
                 "name": name,
@@ -248,9 +264,7 @@ def force_numeric_cols(df):
     for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
-    if "Thru" in df.columns:
-        df["Thru"] = df["Thru"].replace("F", 18)
-        df["Thru"] = pd.to_numeric(df["Thru"], errors="coerce").astype("Int64")
+    # Thru: leave as-is (mixed int/string for tee times), don't force numeric
     return df
 
 
@@ -298,10 +312,13 @@ def _fmt_thru(v):
     """Format Thru value."""
     if pd.isna(v):
         return "-"
-    n = int(v)
-    if n >= 18:
-        return "F"
-    return str(n)
+    try:
+        n = int(v)
+        if n >= 18:
+            return "F"
+        return str(n)
+    except (ValueError, TypeError):
+        return str(v)  # tee time string passes through
 
 
 def _fmt_own_pct(v):
