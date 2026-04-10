@@ -228,37 +228,59 @@ def score_sort_val(score_str):
         return 999
 
 
-def score_to_numeric(score_str):
-    """Convert golf score string to a float for sorting.
-    -5 -> -5.0, E -> 0.0, - -> 0.5 (just after E), +3 -> 3.0"""
-    s = str(score_str).strip()
-    if s == "E":
-        return 0.0
-    if s == "-" or s == "" or s == "None":
-        return 0.5  # sorts just after E, before +1
-    try:
-        return float(int(s))
-    except ValueError:
-        return 0.5
+def _build_score_sort_map():
+    """Build a dict mapping golf score strings to sort-friendly display strings.
+    Uses a zero-width joiner (invisible unicode) prefix so string sort works
+    but the display looks clean.
+
+    Produces strings like: '\u200d\u0041-5' where the hidden chars control sort
+    order and the visible part is '-5', 'E', '-', '+3' etc.
+
+    Sort order: -15, -14, ..., -1, E, -, +1, +2, ..., +25
+    """
+    m = {}
+    idx = 0
+    for n in range(-15, 0):
+        prefix = chr(0x200d) + chr(0x0041 + idx)  # invisible + incrementing char
+        m[str(n)] = f"{prefix}{n}"
+        idx += 1
+    # E (even par)
+    prefix = chr(0x200d) + chr(0x0041 + idx)
+    m["E"] = f"{prefix}E"
+    m["0"] = f"{prefix}E"
+    idx += 1
+    # - (not started)
+    prefix = chr(0x200d) + chr(0x0041 + idx)
+    m["-"] = f"{prefix}-"
+    m[""] = f"{prefix}-"
+    m["None"] = f"{prefix}-"
+    idx += 1
+    # +1 through +25
+    for n in range(1, 26):
+        prefix = chr(0x200d) + chr(0x0041 + idx)
+        display = f"+{n}"
+        m[str(n)] = f"{prefix}{display}"
+        m[f"+{n}"] = f"{prefix}{display}"
+        idx += 1
+    return m
+
+_SCORE_MAP = _build_score_sort_map()
 
 
-def score_format(score_str):
-    """Format golf score for clean display: -5, -3, -1, E, -, +1, +2, +3"""
+def score_sortable_display(score_str):
+    """Convert a golf score to a string that LOOKS like a golf score
+    but sorts correctly when Streamlit sorts strings."""
     s = str(score_str).strip()
-    if s == "E":
-        return "E"
-    if s == "-" or s == "" or s == "None":
-        return "-"
+    if s in _SCORE_MAP:
+        return _SCORE_MAP[s]
     try:
         n = int(s)
+        ns = str(n)
+        if ns in _SCORE_MAP:
+            return _SCORE_MAP[ns]
     except ValueError:
-        return "-"
-    if n < 0:
-        return str(n)      # -5, -3, -1
-    elif n == 0:
-        return "E"
-    else:
-        return f"+{n}"     # +1, +2, +3
+        pass
+    return _SCORE_MAP.get("-")
 
 
 # === LOAD ROSTERS ===
@@ -314,9 +336,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
-                    "Score": score_format(match["score"]),
-                    "_score_n": score_to_numeric(match["score"]),
-                    "Today": score_format(match.get("today", "-")),
+                    "Score": score_sortable_display(match["score"]),
+                    "Today": score_sortable_display(match.get("today", "-")),
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
                 })
@@ -326,9 +347,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
-                    "Score": score_format("-"),
-                    "_score_n": score_to_numeric("-"),
-                    "Today": score_format("-"),
+                    "Score": score_sortable_display("-"),
+                    "Today": score_sortable_display("-"),
                     "Thru": "-",
                     "Points": 0,
                 })
@@ -339,7 +359,7 @@ def compute_pool_scores(rosters, golfers_live):
             "Points": total_pts,
             "Golfers": len(group),
         })
-        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["_score_n"], x["_pos_sort"]))
+        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"], x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
@@ -409,7 +429,7 @@ def main():
     # Show roster detail for selected participant
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
-        detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort", "_score_n"], errors="ignore")
+        detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
@@ -438,7 +458,7 @@ def main():
             if price > 0:
                 value_picks.append({
                     "Golfer": g["name"],
-                    "Score": score_format(g["score"]),
+                    "Score": score_sortable_display(g["score"]),
                     "Pool Pts": g["points"],
                     "Price": f"${price:.2f}",
                     "Pts/$": round(g["points"] / price, 1),
@@ -469,7 +489,7 @@ def main():
             "#": g["pos_int"] if g["pos_int"] else 999,
             "Pos": g["pos_str"],
             "Golfer": g["name"],
-            "Score": score_format(g["score"]),
+            "Score": score_sortable_display(g["score"]),
             "Today": g.get("today", "-"),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
@@ -477,10 +497,7 @@ def main():
             "Own %": f"{count/154*100:.0f}%",
         })
     combined_df = pd.DataFrame(combined_rows)
-    # Sort by position (best first), then replace Score/Today with formatted display
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
-    combined_df["Score"] = combined_df["Score"].apply(score_format)
-    combined_df["Today"] = combined_df["Today"].apply(score_format)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
