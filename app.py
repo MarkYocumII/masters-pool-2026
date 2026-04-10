@@ -421,20 +421,15 @@ def golf_dataframe(df, height=None, **kwargs):
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
 
-    # Apply red shading to rows projected to miss the cut
-    proj_mc_mask = None
+    # For projected MC golfers: fade the text by appending indicator
     if "_proj_mc" in display.columns:
         proj_mc_mask = display["_proj_mc"].fillna(False)
+        # Add MC indicator to Golfer name for projected misses
+        if "Golfer" in display.columns:
+            display.loc[proj_mc_mask, "Golfer"] = display.loc[proj_mc_mask, "Golfer"] + "  (MC)"
         display = display.drop(columns=["_proj_mc"])
 
     styled = display.style.format(fmt, na_rep="-", precision=0)
-
-    if proj_mc_mask is not None and proj_mc_mask.any():
-        def _highlight_mc(row):
-            if proj_mc_mask.iloc[row.name]:
-                return ["background-color: #fff0f0; color: #cc0000"] * len(row)
-            return [""] * len(row)
-        styled = styled.apply(_highlight_mc, axis=1)
 
     # Build column_config for right-alignment
     col_config = {}
@@ -523,10 +518,12 @@ def compute_pool_scores(rosters, golfers_live):
                 })
             total_pts += golfer_details[-1]["Points"]
 
+        making_cut = sum(1 for g in golfer_details if not g.get("_proj_mc", False))
         participant_scores.append({
             "Participant": participant,
             "Points": total_pts,
             "Golfers": len(group),
+            "Making Cut": making_cut,
         })
         participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"] if x["Score"] is not None else 999, x["_pos_sort"]))
 
