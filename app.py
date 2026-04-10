@@ -228,37 +228,37 @@ def score_sort_val(score_str):
         return 999
 
 
-def score_to_sortable(score_str):
-    """Convert golf score to a display string that sorts correctly as a string.
-
-    Golf sort order (ascending/best first): -5, -3, -1, E, -, +1, +2, +3
-    Descending (worst first): +3, +2, +1, -, E, -1, -3, -5
-
-    Strategy: prefix with a hidden unicode char to control sort order while
-    keeping the display human-readable. Actually simpler: just use
-    zero-padded negative numbers as strings. String sort of negative
-    numbers with consistent formatting works:
-      "-05" < "-03" < "-01" < " E " < " - " < "+01" < "+03" < "+05"
-
-    Space-padded to 3 chars so alignment is clean.
-    """
+def score_to_numeric(score_str):
+    """Convert golf score string to a float for sorting.
+    -5 -> -5.0, E -> 0.0, - -> 0.5 (just after E), +3 -> 3.0"""
     s = str(score_str).strip()
-
     if s == "E":
-        return " E "
-
+        return 0.0
     if s == "-" or s == "" or s == "None":
-        return " - "
+        return 0.5  # sorts just after E, before +1
+    try:
+        return float(int(s))
+    except ValueError:
+        return 0.5
 
+
+def score_format(score_str):
+    """Format golf score for clean display: -5, -3, -1, E, -, +1, +2, +3"""
+    s = str(score_str).strip()
+    if s == "E":
+        return "E"
+    if s == "-" or s == "" or s == "None":
+        return "-"
     try:
         n = int(s)
     except ValueError:
-        return " - "
-
+        return "-"
     if n < 0:
-        return f"{n:03d}"   # -05, -03, -01
+        return str(n)      # -5, -3, -1
+    elif n == 0:
+        return "E"
     else:
-        return f"+{n:02d}"  # +01, +03, +05
+        return f"+{n}"     # +1, +2, +3
 
 
 # === LOAD ROSTERS ===
@@ -314,8 +314,9 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
-                    "Score": score_to_sortable(match["score"]),
-                    "Today": score_to_sortable(match.get("today", "-")),
+                    "Score": score_format(match["score"]),
+                    "_score_n": score_to_numeric(match["score"]),
+                    "Today": score_format(match.get("today", "-")),
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
                 })
@@ -325,8 +326,9 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
-                    "Score": score_to_sortable("-"),
-                    "Today": score_to_sortable("-"),
+                    "Score": score_format("-"),
+                    "_score_n": score_to_numeric("-"),
+                    "Today": score_format("-"),
                     "Thru": "-",
                     "Points": 0,
                 })
@@ -337,7 +339,7 @@ def compute_pool_scores(rosters, golfers_live):
             "Points": total_pts,
             "Golfers": len(group),
         })
-        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"], x["_pos_sort"]))
+        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["_score_n"], x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
@@ -407,7 +409,7 @@ def main():
     # Show roster detail for selected participant
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
-        detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
+        detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort", "_score_n"], errors="ignore")
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
@@ -436,7 +438,7 @@ def main():
             if price > 0:
                 value_picks.append({
                     "Golfer": g["name"],
-                    "Score": score_to_sortable(g["score"]),
+                    "Score": score_format(g["score"]),
                     "Pool Pts": g["points"],
                     "Price": f"${price:.2f}",
                     "Pts/$": round(g["points"] / price, 1),
@@ -467,7 +469,7 @@ def main():
             "#": g["pos_int"] if g["pos_int"] else 999,
             "Pos": g["pos_str"],
             "Golfer": g["name"],
-            "Score": score_to_sortable(g["score"]),
+            "Score": score_format(g["score"]),
             "Today": g.get("today", "-"),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
@@ -475,9 +477,10 @@ def main():
             "Own %": f"{count/154*100:.0f}%",
         })
     combined_df = pd.DataFrame(combined_rows)
-    combined_df["Score"] = combined_df["Score"].apply(score_to_sortable)
-    combined_df["Today"] = combined_df["Today"].apply(score_to_sortable)
+    # Sort by position (best first), then replace Score/Today with formatted display
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
+    combined_df["Score"] = combined_df["Score"].apply(score_format)
+    combined_df["Today"] = combined_df["Today"].apply(score_format)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
