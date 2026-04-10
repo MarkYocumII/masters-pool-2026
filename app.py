@@ -217,6 +217,17 @@ def fetch_leaderboard():
     return golfers, event_name
 
 
+def score_sort_val(score_str):
+    """Convert score string to numeric for proper sorting: -5 < E(0) < +3."""
+    s = str(score_str).strip()
+    if s == "E": return 0
+    if s == "-" or s == "": return 999
+    try:
+        return int(s)
+    except ValueError:
+        return 999
+
+
 # === LOAD ROSTERS ===
 @st.cache_data(ttl=300)
 def load_rosters():
@@ -293,7 +304,7 @@ def compute_pool_scores(rosters, golfers_live):
             "Points": total_pts,
             "Golfers": len(group),
         })
-        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["_pos_sort"]))
+        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], score_sort_val(x["Score"]), x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
@@ -430,7 +441,9 @@ def main():
             "Rostered": f"{count}/154",
             "Own %": f"{count/154*100:.0f}%",
         })
-    combined_df = pd.DataFrame(combined_rows).sort_values("#").drop(columns=["#"]).reset_index(drop=True)
+    combined_df = pd.DataFrame(combined_rows)
+    combined_df["_score_sort"] = combined_df["Score"].apply(score_sort_val)
+    combined_df = combined_df.sort_values(["_score_sort", "#"]).drop(columns=["#", "_score_sort"]).reset_index(drop=True)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
