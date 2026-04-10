@@ -412,33 +412,30 @@ def golf_dataframe(df, height=None, **kwargs):
             display.loc[proj_mc_mask, "Golfer"] = display.loc[proj_mc_mask, "Golfer"] + "  (MC)"
         display = display.drop(columns=["_proj_mc"])
 
-    # Score/Today: replace 999 with NaN so NumberColumn shows blank
-    for col in ["Score", "Today"]:
-        if col in display.columns:
-            display[col] = display[col].replace(999, pd.NA).astype("Int64")
+    # Score: 999 -> NA (sorts last, displays as "-")
+    if "Score" in display.columns:
+        display["Score"] = display["Score"].replace(999, pd.NA).astype("Int64")
 
-    # Own %: format as string with % so it doesn't need NumberColumn
-    if "Own %" in display.columns:
-        display["Own %"] = display["Own %"].apply(lambda v: f"{v}%" if pd.notna(v) and v != 999 else "-")
+    # Today: 999 -> 0 (not started = even par for today, sorts as zero, displays as "E")
+    if "Today" in display.columns:
+        display["Today"] = display["Today"].replace(999, 0).astype("Int64")
 
-    # column_config: NumberColumn for Score/Today (numeric sort + format)
-    col_config = {}
+    # Styler: format display values while Arrow keeps numeric data for sorting
+    fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
-            col_config[col] = st.column_config.NumberColumn(
-                col, format="%+d", alignment="right"
-            )
-        elif col in ("Points", "Pool Pts"):
-            col_config[col] = st.column_config.NumberColumn(
-                col, format="%d", alignment="right"
-            )
-        elif col in ("Thru", "Pos", "Own %"):
-            col_config[col] = st.column_config.TextColumn(col, alignment="right")
+            fmt[col] = _fmt_golf_score
+        elif col == "Thru" and display["Thru"].dtype != object:
+            fmt[col] = _fmt_thru
+        elif col == "Own %":
+            fmt[col] = _fmt_own_pct
+
+    styled = display.style.format(fmt, na_rep="-", precision=0)
 
     kw = {**kwargs}
     if height:
         kw["height"] = height
-    st.dataframe(display, column_config=col_config, **kw)
+    st.dataframe(styled, **kw)
 
 
 # === LOAD ROSTERS ===
