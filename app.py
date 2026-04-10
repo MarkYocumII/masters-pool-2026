@@ -171,7 +171,7 @@ def fetch_leaderboard():
                                     pass
 
             # Today's round score
-            today = "-"
+            today = tee_time_str if tee_time_str else "-"
             if linescores and len(linescores) >= 1:
                 latest = linescores[-1]
                 today_val = latest.get("displayValue", "-")
@@ -271,7 +271,7 @@ def score_to_int(score_str):
 def force_numeric_cols(df):
     """Force Score, Today, Thru, Points, and Pool Pts columns to numeric dtype
     so Streamlit sorts them as numbers, not strings."""
-    for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
+    for col in ["Score", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
     if "Thru" in df.columns:
@@ -344,10 +344,29 @@ def golf_dataframe(df, height=None, **kwargs):
     display = df.copy()
     display = display[[c for c in display.columns if not c.startswith("_")]]
 
-    # Force Score, Today, Points, Own %, Pts/$ to numeric for sorting
-    for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
+    # Force numeric columns for sorting (NOT Today — it has tee time strings)
+    for col in ["Score", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in display.columns:
             display[col] = pd.to_numeric(display[col], errors="coerce").astype("Int64")
+
+    # Today: format scores nicely but keep as string (may contain tee times)
+    if "Today" in display.columns:
+        def _fmt_today_str(v):
+            s = str(v).strip()
+            if s.startswith("T") and ("AM" in s or "PM" in s):
+                return s  # tee time, pass through
+            if s == "-" or s == "" or s == "None":
+                return "-"
+            if s == "E":
+                return "E"
+            try:
+                n = int(s)
+                if n == 0: return "E"
+                if n > 0: return f"+{n}"
+                return str(n)
+            except ValueError:
+                return s
+        display["Today"] = display["Today"].apply(_fmt_today_str)
 
     # Thru: convert to numeric, then format. Tee times handled below.
     if "Thru" in display.columns and "tee_time" not in display.columns:
@@ -371,8 +390,9 @@ def golf_dataframe(df, height=None, **kwargs):
     # Build Styler format dict
     fmt = {}
     for col in display.columns:
-        if col in ("Score", "Today"):
+        if col == "Score":
             fmt[col] = _fmt_golf_score
+        # Today is pre-formatted as string (scores + tee times), skip Styler
         elif col == "Thru" and display["Thru"].dtype != object:
             # Only format if still numeric (no tee times merged)
             fmt[col] = _fmt_thru
@@ -441,7 +461,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
                     "Score": score_to_int(match["score"]),
-                    "Today": score_to_int(match.get("today", "-")),
+                    "Today": match.get("today", "-"),
                     "Thru": match["thru"],
                     "tee_time": match.get("tee_time", ""),
                     "Points": pts,
@@ -453,7 +473,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Position": "-",
                     "_pos_sort": 999,
                     "Score": score_to_int("-"),
-                    "Today": score_to_int("-"),
+                    "Today": "-",
                     "Thru": None,
                     "tee_time": "",
                     "Points": 0,
@@ -598,7 +618,7 @@ def main():
             "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": score_to_int(g["score"]),
-            "Today": score_to_int(g.get("today", "-")),
+            "Today": g.get("today", "-"),
             "Thru": g["thru"],
             "tee_time": g.get("tee_time", ""),
             "Pool Pts": g["points"],
