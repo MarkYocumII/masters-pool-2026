@@ -283,12 +283,14 @@ def golf_display_df(df):
 
 
 def golf_dataframe(df, **kwargs):
-    """Render a golf dataframe with proper display (E, -, +3) and numeric sorting.
-    Hides the sort columns using column_order."""
+    """Render a golf dataframe with proper display (E, -, +3).
+    Sorting disabled — tables are pre-sorted correctly."""
     display = golf_display_df(df)
-    # Build column_order excluding hidden sort columns
     visible = [c for c in display.columns if not c.startswith("_")]
-    st.dataframe(display, column_order=visible, **kwargs)
+    display = display[visible]
+    # Build column config to disable sorting on all columns
+    config = {col: st.column_config.Column(col, disabled=True) for col in visible}
+    st.dataframe(display, column_config=config, **kwargs)
 
 
 # === LOAD ROSTERS ===
