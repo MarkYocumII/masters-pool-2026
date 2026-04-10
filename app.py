@@ -20,6 +20,11 @@ except ImportError:
     pass
 
 
+# === PROJECTED CUT LINE ===
+# Update this as ESPN updates the projected cut. Set to None before cut is projected.
+PROJECTED_CUT = 3  # +3 means golfers at +4 or worse are projected to miss the cut
+
+
 # === SCORING RULES ===
 def points_for_position(pos, status=None):
     if status and status.upper() in ("CUT", "MC", "WD", "DQ"):
@@ -211,6 +216,12 @@ def fetch_leaderboard():
             i = j
 
         for g in active:
+            # Check if projected to miss cut
+            score_num = score_to_int(g["score"])
+            proj_mc = False
+            if PROJECTED_CUT is not None and score_num is not None and score_num > PROJECTED_CUT:
+                proj_mc = True
+            pts = 0 if proj_mc else points_for_position(g["pos_int"], None)
             golfers.append({
                 "name": g["name"],
                 "name_norm": g["name_norm"],
@@ -221,7 +232,8 @@ def fetch_leaderboard():
                 "today": g["today"],
                 "thru": g["thru"],
                 "tee_time": g.get("tee_time", ""),
-                "points": points_for_position(g["pos_int"], None),
+                "points": pts,
+                "proj_mc": proj_mc,
             })
 
         for g in inactive:
@@ -236,6 +248,7 @@ def fetch_leaderboard():
                 "thru": g["thru"],
                 "tee_time": g.get("tee_time", ""),
                 "points": 0,
+                "proj_mc": True,
             })
     except Exception as e:
         return None, f"Parse error: {e}"
@@ -399,7 +412,20 @@ def golf_dataframe(df, height=None, **kwargs):
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
 
+    # Apply red shading to rows projected to miss the cut
+    proj_mc_mask = None
+    if "_proj_mc" in display.columns:
+        proj_mc_mask = display["_proj_mc"].fillna(False)
+        display = display.drop(columns=["_proj_mc"])
+
     styled = display.style.format(fmt, na_rep="-", precision=0)
+
+    if proj_mc_mask is not None and proj_mc_mask.any():
+        def _highlight_mc(row):
+            if proj_mc_mask.iloc[row.name]:
+                return ["background-color: #ffcccc"] * len(row)
+            return [""] * len(row)
+        styled = styled.apply(_highlight_mc, axis=1)
 
     # Build column_config for right-alignment
     col_config = {}
@@ -466,6 +492,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
+                    "_proj_mc": match.get("proj_mc", False),
                     "Score": score_to_int(match["score"]),
                     "Today": match.get("today", "-"),
                     "Thru": match["thru"],
@@ -478,6 +505,7 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
+                    "_proj_mc": True,
                     "Score": score_to_int("-"),
                     "Today": "-",
                     "Thru": None,
@@ -562,6 +590,7 @@ def main():
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
         detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
+        # _proj_mc handled inside golf_dataframe
         detail_df = force_numeric_cols(detail_df)
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
@@ -606,6 +635,8 @@ def main():
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
     # ============================================
     st.markdown("### ⛳ Masters Leaderboard & Ownership (Full Field)")
+    if PROJECTED_CUT is not None:
+        st.caption(f"Projected cut: +{PROJECTED_CUT}. Golfers at +{PROJECTED_CUT + 1} or worse highlighted in red (0 pool points).")
     top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))
     combined_rows = []
     for g in top_golfers:
@@ -621,6 +652,7 @@ def main():
                 count += 1
         combined_rows.append({
             "#": g["pos_int"] if g["pos_int"] else 999,
+            "_proj_mc": g.get("proj_mc", False),
             "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": score_to_int(g["score"]),
