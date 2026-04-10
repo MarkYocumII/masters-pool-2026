@@ -95,13 +95,13 @@ def fetch_leaderboard():
         r.raise_for_status()
         data = r.json()
     except Exception as e:
-        return None, str(e)
+        return None, str(e), None
 
     golfers = []
     try:
         events = data.get("events", [])
         if not events:
-            return None, "No events found in ESPN data"
+            return None, "No events found in ESPN data", None
 
         event = None
         for ev in events:
@@ -114,7 +114,7 @@ def fetch_leaderboard():
         event_name = event.get("name", "Unknown Event")
         competitions = event.get("competitions", [])
         if not competitions:
-            return None, f"No competitions in event: {event_name}"
+            return None, f"No competitions in event: {event_name}", None
 
         competitors = competitions[0].get("competitors", [])
 
@@ -245,29 +245,24 @@ def fetch_leaderboard():
                 "proj_mc": True,
             })
     except Exception as e:
-        return None, f"Parse error: {e}"
+        return None, f"Parse error: {e}", None
 
     # Compute projected cut line from live scores (Masters: top 50 and ties)
-    global PROJECTED_CUT
     active_scores = sorted([score_to_int(g["score"]) for g in golfers
                            if g["status"] is None and score_to_int(g["score"]) is not None])
-    if len(active_scores) >= 50:
-        PROJECTED_CUT = active_scores[49]  # 50th place score
-    else:
-        PROJECTED_CUT = None
+    cut_line = active_scores[49] if len(active_scores) >= 50 else None
 
     # Apply projected MC flag and zero points for golfers above the cut
-    if PROJECTED_CUT is not None:
+    if cut_line is not None:
         for g in golfers:
             score_num = score_to_int(g["score"])
-            if score_num is not None and score_num > PROJECTED_CUT:
+            if score_num is not None and score_num > cut_line:
                 g["proj_mc"] = True
                 g["points"] = 0
             elif g.get("status"):
                 g["proj_mc"] = True
-            # golfers at or below cut keep their points and proj_mc=False
 
-    return golfers, event_name
+    return golfers, event_name, cut_line
 
 
 def score_sort_val(score_str):
@@ -437,7 +432,7 @@ def golf_dataframe(df, height=None, **kwargs):
     if proj_mc_mask is not None and proj_mc_mask.any():
         def _highlight_mc(row):
             if proj_mc_mask.iloc[row.name]:
-                return ["background-color: #ffcccc"] * len(row)
+                return ["background-color: rgba(255, 0, 0, 0.08)"] * len(row)
             return [""] * len(row)
         styled = styled.apply(_highlight_mc, axis=1)
 
@@ -548,12 +543,12 @@ def main():
     st.markdown("##### Live Scoring Leaderboard — 152 Participants")
 
     rosters = load_rosters()
-    golfers_live, event_info = fetch_leaderboard()
-
-    if golfers_live is None:
-        st.error(f"Could not fetch leaderboard: {event_info}")
+    result = fetch_leaderboard()
+    if result is None or result[0] is None:
+        st.error(f"Could not fetch leaderboard: {result[1] if result else 'Unknown error'}")
         st.info("The leaderboard will appear once tournament data is available from ESPN.")
         return
+    golfers_live, event_info, projected_cut = result
 
     st.caption(f"**{event_info}** | Updated: {datetime.now(timezone.utc).strftime('%I:%M %p UTC')} | Auto-refreshes every 3 min")
 
@@ -649,10 +644,10 @@ def main():
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
     # ============================================
     st.markdown("### ⛳ Masters Leaderboard & Ownership (Full Field)")
-    if PROJECTED_CUT is not None:
-        cut_display = f"+{PROJECTED_CUT}" if PROJECTED_CUT > 0 else ("E" if PROJECTED_CUT == 0 else str(PROJECTED_CUT))
-        over_display = f"+{PROJECTED_CUT + 1}" if PROJECTED_CUT + 1 > 0 else "E"
-        st.caption(f"Projected cut: {cut_display} (top 50 + ties). Golfers at {over_display} or worse highlighted in red (0 pool points).")
+    if projected_cut is not None:
+        cut_display = f"+{projected_cut}" if projected_cut > 0 else ("E" if projected_cut == 0 else str(projected_cut))
+        over_display = f"+{projected_cut + 1}" if projected_cut + 1 > 0 else "E"
+        st.caption(f"Projected cut: {cut_display} (top 50 + ties). Golfers at {over_display} or worse are highlighted and score 0 pool points.")
     top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))
     combined_rows = []
     for g in top_golfers:
