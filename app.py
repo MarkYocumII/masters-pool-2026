@@ -228,59 +228,18 @@ def score_sort_val(score_str):
         return 999
 
 
-def _build_score_sort_map():
-    """Build a dict mapping golf score strings to sort-friendly display strings.
-    Uses a zero-width joiner (invisible unicode) prefix so string sort works
-    but the display looks clean.
-
-    Produces strings like: '\u200d\u0041-5' where the hidden chars control sort
-    order and the visible part is '-5', 'E', '-', '+3' etc.
-
-    Sort order: -15, -14, ..., -1, E, -, +1, +2, ..., +25
-    """
-    m = {}
-    idx = 0
-    for n in range(-15, 0):
-        prefix = chr(0x200d) + chr(0x0041 + idx)  # invisible + incrementing char
-        m[str(n)] = f"{prefix}{n}"
-        idx += 1
-    # E (even par)
-    prefix = chr(0x200d) + chr(0x0041 + idx)
-    m["E"] = f"{prefix}E"
-    m["0"] = f"{prefix}E"
-    idx += 1
-    # - (not started)
-    prefix = chr(0x200d) + chr(0x0041 + idx)
-    m["-"] = f"{prefix}-"
-    m[""] = f"{prefix}-"
-    m["None"] = f"{prefix}-"
-    idx += 1
-    # +1 through +25
-    for n in range(1, 26):
-        prefix = chr(0x200d) + chr(0x0041 + idx)
-        display = f"+{n}"
-        m[str(n)] = f"{prefix}{display}"
-        m[f"+{n}"] = f"{prefix}{display}"
-        idx += 1
-    return m
-
-_SCORE_MAP = _build_score_sort_map()
-
-
-def score_sortable_display(score_str):
-    """Convert a golf score to a string that LOOKS like a golf score
-    but sorts correctly when Streamlit sorts strings."""
+def score_to_int(score_str):
+    """Convert golf score to integer. E=0, -=None, -5=-5, +3=3.
+    Streamlit sorts integers correctly in both directions."""
     s = str(score_str).strip()
-    if s in _SCORE_MAP:
-        return _SCORE_MAP[s]
+    if s == "E":
+        return 0
+    if s == "-" or s == "" or s == "None":
+        return None
     try:
-        n = int(s)
-        ns = str(n)
-        if ns in _SCORE_MAP:
-            return _SCORE_MAP[ns]
+        return int(s)
     except ValueError:
-        pass
-    return _SCORE_MAP.get("-")
+        return None
 
 
 # === LOAD ROSTERS ===
@@ -336,8 +295,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
-                    "Score": score_sortable_display(match["score"]),
-                    "Today": score_sortable_display(match.get("today", "-")),
+                    "Score": score_to_int(match["score"]),
+                    "Today": score_to_int(match.get("today", "-")),
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
                 })
@@ -347,8 +306,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
-                    "Score": score_sortable_display("-"),
-                    "Today": score_sortable_display("-"),
+                    "Score": score_to_int("-"),
+                    "Today": score_to_int("-"),
                     "Thru": "-",
                     "Points": 0,
                 })
@@ -359,7 +318,7 @@ def compute_pool_scores(rosters, golfers_live):
             "Points": total_pts,
             "Golfers": len(group),
         })
-        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"], x["_pos_sort"]))
+        participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"] if x["Score"] is not None else 999, x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
     df_scores.index = df_scores.index + 1
@@ -458,7 +417,7 @@ def main():
             if price > 0:
                 value_picks.append({
                     "Golfer": g["name"],
-                    "Score": score_sortable_display(g["score"]),
+                    "Score": score_to_int(g["score"]),
                     "Pool Pts": g["points"],
                     "Price": f"${price:.2f}",
                     "Pts/$": round(g["points"] / price, 1),
@@ -489,7 +448,7 @@ def main():
             "#": g["pos_int"] if g["pos_int"] else 999,
             "Pos": g["pos_str"],
             "Golfer": g["name"],
-            "Score": score_sortable_display(g["score"]),
+            "Score": score_to_int(g["score"]),
             "Today": g.get("today", "-"),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
