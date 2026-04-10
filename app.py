@@ -249,10 +249,46 @@ def force_numeric_cols(df):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
     if "Thru" in df.columns:
-        # F (finished) = 18 for sorting, "-" = blank
         df["Thru"] = df["Thru"].replace("F", 18)
         df["Thru"] = pd.to_numeric(df["Thru"], errors="coerce").astype("Int64")
     return df
+
+
+def golf_display_df(df):
+    """Prepare a dataframe for display: duplicate Score/Today as hidden numeric
+    sort columns, then replace the visible ones with golf-formatted strings.
+    Use st.dataframe column_order to hide the sort columns."""
+    out = df.copy()
+    for col in ["Score", "Today"]:
+        if col not in out.columns:
+            continue
+        sort_col = f"_{col}_sort"
+        out[sort_col] = out[col]  # keep numeric copy
+        # Format display: 0 -> E, NaN -> -, negative stays, positive gets +
+        def fmt(v):
+            if pd.isna(v):
+                return "-"
+            n = int(v)
+            if n == 0:
+                return "E"
+            if n > 0:
+                return f"+{n}"
+            return str(n)
+        out[col] = out[col].apply(fmt)
+    if "Thru" in out.columns:
+        sort_col = "_Thru_sort"
+        out[sort_col] = out["Thru"]
+        out["Thru"] = out["Thru"].apply(lambda v: "F" if not pd.isna(v) and int(v) >= 18 else ("-" if pd.isna(v) else str(int(v))))
+    return out
+
+
+def golf_dataframe(df, **kwargs):
+    """Render a golf dataframe with proper display (E, -, +3) and numeric sorting.
+    Hides the sort columns using column_order."""
+    display = golf_display_df(df)
+    # Build column_order excluding hidden sort columns
+    visible = [c for c in display.columns if not c.startswith("_")]
+    st.dataframe(display, column_order=visible, **kwargs)
 
 
 # === LOAD ROSTERS ===
@@ -407,7 +443,7 @@ def main():
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
         st.markdown(f"**Rank #{rank}** — {len(detail_df)} golfers — **{total} points**")
-        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+        golf_dataframe(detail_df, use_container_width=True, hide_index=True)
 
     # ============================================
     # BEST VALUE PICKS (most points per dollar spent)
@@ -440,7 +476,7 @@ def main():
     if value_picks:
         value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
         vp_df = force_numeric_cols(pd.DataFrame(value_picks[:12]))
-        st.dataframe(vp_df, use_container_width=True, hide_index=True)
+        golf_dataframe(vp_df, use_container_width=True, hide_index=True)
 
     # ============================================
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
@@ -473,7 +509,7 @@ def main():
     combined_df = pd.DataFrame(combined_rows)
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
     combined_df = force_numeric_cols(combined_df)
-    st.dataframe(combined_df, use_container_width=True, hide_index=True)
+    golf_dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
     st.markdown("---")
