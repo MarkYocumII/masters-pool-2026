@@ -432,7 +432,7 @@ def golf_dataframe(df, height=None, **kwargs):
     if proj_mc_mask is not None and proj_mc_mask.any():
         def _highlight_mc(row):
             if proj_mc_mask.iloc[row.name]:
-                return ["background-color: rgba(255, 0, 0, 0.08)"] * len(row)
+                return ["background-color: #fff0f0; color: #cc0000"] * len(row)
             return [""] * len(row)
         styled = styled.apply(_highlight_mc, axis=1)
 
