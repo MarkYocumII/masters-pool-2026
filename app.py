@@ -386,24 +386,22 @@ def golf_dataframe(df, height=None, **kwargs):
             return n if n is not None else 999
         display["Today"] = display["Today"].apply(_today_to_int).astype(int)
 
-    # Thru: convert to numeric, then format. Tee times handled below.
-    if "Thru" in display.columns and "tee_time" not in display.columns:
-        display["Thru"] = pd.to_numeric(display["Thru"], errors="coerce").astype("Int64")
-
-    # If tee_time column exists, merge into Thru display then drop
+    # Drop tee_time column (shown via Thru formatting)
     if "tee_time" in display.columns:
-        display["Thru"] = pd.to_numeric(display["Thru"], errors="coerce").astype("Int64")
-        # Build the formatted Thru column as strings
-        def _merge_thru(row):
-            if pd.isna(row["Thru"]):
-                tt = row.get("tee_time", "")
-                return tt if tt else "-"
-            n = int(row["Thru"])
-            if n >= 18:
-                return "F"
-            return str(n)
-        display["Thru"] = display.apply(_merge_thru, axis=1)
         display = display.drop(columns=["tee_time"])
+
+    if "Thru" in display.columns:
+        def _thru_to_int(v):
+            if pd.isna(v) or v is None:
+                return 0  # not started = 0
+            try:
+                n = int(v)
+                if n >= 18:
+                    return 19  # F sorts after 18
+                return n
+            except (ValueError, TypeError):
+                return 0
+        display["Thru"] = display["Thru"].apply(_thru_to_int).astype("Int64")
 
     # MC indicator on golfer names
     if "_proj_mc" in display.columns:
@@ -421,12 +419,23 @@ def golf_dataframe(df, height=None, **kwargs):
         display["Today"] = display["Today"].replace(999, 0).astype("Int64")
 
     # Styler: format display values while Arrow keeps numeric data for sorting
+    # Thru Styler: 0 -> "-", 19 -> "F", 1-18 -> hole number
+    def _fmt_thru_int(v):
+        if pd.isna(v):
+            return "-"
+        n = int(v)
+        if n == 0:
+            return "-"
+        if n >= 19:
+            return "F"
+        return str(n)
+
     fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
             fmt[col] = _fmt_golf_score
-        elif col == "Thru" and display["Thru"].dtype != object:
-            fmt[col] = _fmt_thru
+        elif col == "Thru":
+            fmt[col] = _fmt_thru_int
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
 
