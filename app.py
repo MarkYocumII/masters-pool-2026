@@ -228,6 +228,21 @@ def score_sort_val(score_str):
         return 999
 
 
+def score_display(score_str):
+    """Format golf score for display that also sorts correctly both ascending and descending.
+    Uses numeric representation: -5, -1, 0, +1, +5.
+    Streamlit sorts numbers correctly in both directions."""
+    s = str(score_str).strip()
+    if s == "-" or s == "":
+        return None  # will be NaN -> sorts last
+    if s == "E":
+        return 0
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
 # === LOAD ROSTERS ===
 @st.cache_data(ttl=300)
 def load_rosters():
@@ -281,8 +296,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": match["pos_str"],
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
-                    "Score": match["score"],
-                    "Today": match.get("today", "-"),
+                    "Score": score_display(match["score"]),
+                    "Today": score_display(match.get("today", "-")),
                     "Thru": match["thru"] if match["thru"] else "-",
                     "Points": pts,
                 })
@@ -292,8 +307,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "Price": f"${row['Price']:.2f}",
                     "Position": "-",
                     "_pos_sort": 999,
-                    "Score": "-",
-                    "Today": "-",
+                    "Score": None,
+                    "Today": None,
                     "Thru": "-",
                     "Points": 0,
                 })
@@ -403,7 +418,7 @@ def main():
             if price > 0:
                 value_picks.append({
                     "Golfer": g["name"],
-                    "Score": g["score"],
+                    "Score": score_display(g["score"]),
                     "Pool Pts": g["points"],
                     "Price": f"${price:.2f}",
                     "Pts/$": round(g["points"] / price, 1),
@@ -434,16 +449,15 @@ def main():
             "#": g["pos_int"] if g["pos_int"] else 999,
             "Pos": g["pos_str"],
             "Golfer": g["name"],
-            "Score": g["score"],
-            "Today": g.get("today", "-"),
+            "Score": score_display(g["score"]),
+            "Today": score_display(g.get("today", "-")),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
             "Rostered": f"{count}/154",
             "Own %": f"{count/154*100:.0f}%",
         })
     combined_df = pd.DataFrame(combined_rows)
-    combined_df["_score_sort"] = combined_df["Score"].apply(score_sort_val)
-    combined_df = combined_df.sort_values(["_score_sort", "#"]).drop(columns=["#", "_score_sort"]).reset_index(drop=True)
+    combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
