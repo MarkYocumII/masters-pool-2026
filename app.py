@@ -295,7 +295,7 @@ def force_numeric_cols(df):
     so Streamlit sorts them as numbers, not strings."""
     for col in ["Score", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(999).astype(int)
     if "Thru" in df.columns:
         df["Thru"] = pd.to_numeric(df["Thru"], errors="coerce").astype("Int64")
     return df
@@ -334,6 +334,8 @@ def _fmt_golf_score(v):
     if pd.isna(v):
         return "-"
     n = int(v)
+    if n == 999 or n == -999:
+        return "-"
     if n == 0:
         return "E"
     if n > 0:
@@ -381,7 +383,10 @@ def golf_dataframe(df, height=None, **kwargs):
                 return None  # tee time -> treat as not started
             return score_to_int(s)
         display["Today"] = display["Today"].apply(_clean_today)
-        display["Today"] = pd.to_numeric(display["Today"], errors="coerce").astype("Int64")
+        # Fill None with a large number so it sorts last, Styler will format as "-"
+        display["Today"] = pd.to_numeric(display["Today"], errors="coerce")
+        # Replace NaN with 999 — Styler will show as "-"
+        display["Today"] = display["Today"].fillna(999).astype(int)
 
     # Thru: convert to numeric, then format. Tee times handled below.
     if "Thru" in display.columns and "tee_time" not in display.columns:
