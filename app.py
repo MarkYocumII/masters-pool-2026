@@ -245,7 +245,7 @@ def score_to_int(score_str):
 def force_numeric_cols(df):
     """Force Score, Today, Thru, Points, and Pool Pts columns to numeric dtype
     so Streamlit sorts them as numbers, not strings."""
-    for col in ["Score", "Today", "Points", "Pool Pts"]:
+    for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
     if "Thru" in df.columns:
@@ -282,15 +282,58 @@ def golf_display_df(df):
     return out
 
 
-def golf_dataframe(df, **kwargs):
-    """Render a golf dataframe with proper display (E, -, +3).
-    Sorting disabled — tables are pre-sorted correctly."""
-    display = golf_display_df(df)
-    visible = [c for c in display.columns if not c.startswith("_")]
-    display = display[visible]
-    # Build column config to disable sorting on all columns
-    config = {col: st.column_config.Column(col, disabled=True) for col in visible}
-    st.dataframe(display, column_config=config, **kwargs)
+def _fmt_golf_score(v):
+    """Format a single golf score value for display."""
+    if pd.isna(v):
+        return "-"
+    n = int(v)
+    if n == 0:
+        return "E"
+    if n > 0:
+        return f"+{n}"
+    return str(n)
+
+
+def _fmt_thru(v):
+    """Format Thru value."""
+    if pd.isna(v):
+        return "-"
+    n = int(v)
+    if n >= 18:
+        return "F"
+    return str(n)
+
+
+def _fmt_own_pct(v):
+    """Format Own % value."""
+    if pd.isna(v):
+        return "-"
+    return f"{int(v)}%"
+
+
+def golf_dataframe(df, height=None, **kwargs):
+    """Render a golf table. Data stays Int64 for correct sorting.
+    Uses pandas Styler.format() for display formatting — Streamlit
+    renders the formatted values but sorts by the underlying data."""
+    display = df.copy()
+    display = display[[c for c in display.columns if not c.startswith("_")]]
+
+    # Build format dict for the Styler
+    fmt = {}
+    for col in display.columns:
+        if col in ("Score", "Today"):
+            fmt[col] = _fmt_golf_score
+        elif col == "Thru":
+            fmt[col] = _fmt_thru
+        elif col == "Own %":
+            fmt[col] = _fmt_own_pct
+
+    styled = display.style.format(fmt, na_rep="-")
+
+    kw = {**kwargs}
+    if height:
+        kw["height"] = height
+    st.dataframe(styled, **kw)
 
 
 # === LOAD ROSTERS ===
@@ -506,7 +549,7 @@ def main():
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
             "Rostered": f"{count}/154",
-            "Own %": f"{count/154*100:.0f}%",
+            "Own %": round(count/154*100),
         })
     combined_df = pd.DataFrame(combined_rows)
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
