@@ -132,12 +132,20 @@ def fetch_leaderboard():
             thru = "-"
             linescores = comp.get("linescores", [])
             if linescores:
-                current_round = linescores[0] if linescores else {}
+                # Find the current/latest round: last round with hole data
+                current_round = linescores[-1]  # latest round entry
                 hole_scores = current_round.get("linescores", [])
                 if hole_scores:
                     thru = len(hole_scores)
                     if thru >= 18:
                         thru = "F"
+                elif len(linescores) >= 2:
+                    # Latest round has no holes yet — player hasn't started
+                    # Check if prior round is complete
+                    prev_round = linescores[-2]
+                    prev_holes = prev_round.get("linescores", [])
+                    if prev_holes and len(prev_holes) >= 18:
+                        thru = "-"  # finished prior round, not started current
 
             raw_golfers.append({
                 "name": name,
