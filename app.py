@@ -129,8 +129,8 @@ def fetch_leaderboard():
             if status_type.upper() in ("CUT", "MC", "WD", "DQ"):
                 status = status_type.upper()
 
-            thru = "-"
-            tee_time = None
+            thru = None  # None = not started, will be Int64 NA
+            tee_time_str = ""
             linescores = comp.get("linescores", [])
             if linescores:
                 current_round = linescores[-1]
@@ -138,28 +138,29 @@ def fetch_leaderboard():
                 if hole_scores:
                     thru = len(hole_scores)
                     if thru >= 18:
-                        thru = "F"
+                        thru = 18  # Styler will format as F
                 else:
-                    # Not started current round — extract tee time
+                    # Not started — extract tee time for display
                     stats = current_round.get("statistics", {})
                     cats = stats.get("categories", []) if stats else []
                     for cat in cats:
                         for s in cat.get("stats", []):
                             dv = s.get("displayValue", "")
-                            if "AM" in dv or "PM" in dv:
-                                # Parse "Fri Apr 10 12:32:00 PDT 2026" to "12:32 PM"
+                            if ("AM" in dv or "PM" in dv or "PDT" in dv or
+                                "PST" in dv or "EDT" in dv or "EST" in dv):
                                 try:
-                                    from datetime import datetime
-                                    dt = datetime.strptime(dv.replace(" PDT ", " ").replace(" PST ", " ").replace(" EDT ", " ").replace(" EST ", " "),
-                                                           "%a %b %d %H:%M:%S %Y")
-                                    tee_time = dt.strftime("%-I:%M %p").lstrip("0")
+                                    cleaned = dv
+                                    for tz in (" PDT ", " PST ", " EDT ", " EST "):
+                                        cleaned = cleaned.replace(tz, " ")
+                                    dt = __import__("datetime").datetime.strptime(
+                                        cleaned, "%a %b %d %H:%M:%S %Y")
+                                    h = dt.hour
+                                    ampm = "AM" if h < 12 else "PM"
+                                    if h > 12: h -= 12
+                                    if h == 0: h = 12
+                                    tee_time_str = f"{h}:{dt.minute:02d} {ampm}"
                                 except Exception:
-                                    # Fallback: just grab HH:MM from the string
-                                    import re
-                                    m = re.search(r"(\d{1,2}:\d{2}):\d{2}\s*(AM|PM|PDT|PST|EDT|EST)", dv)
-                                    if m:
-                                        tee_time = m.group(1)
-                    thru = tee_time if tee_time else "-"
+                                    pass
 
             # Today's round score
             today = "-"
@@ -168,8 +169,6 @@ def fetch_leaderboard():
                 today_val = latest.get("displayValue", "-")
                 if today_val and today_val != "-":
                     today = today_val
-                elif tee_time:
-                    today = "-"  # not started yet, keep dash
 
             raw_golfers.append({
                 "name": name,
@@ -179,6 +178,7 @@ def fetch_leaderboard():
                 "score": score_display,
                 "today": today,
                 "thru": thru,
+                "tee_time": tee_time_str,
             })
 
         # Second pass: compute tied positions
@@ -212,6 +212,7 @@ def fetch_leaderboard():
                 "score": g["score"],
                 "today": g["today"],
                 "thru": g["thru"],
+                "tee_time": g.get("tee_time", ""),
                 "points": points_for_position(g["pos_int"], None),
             })
 
@@ -225,6 +226,7 @@ def fetch_leaderboard():
                 "score": g["score"],
                 "today": g.get("today", "-"),
                 "thru": g["thru"],
+                "tee_time": g.get("tee_time", ""),
                 "points": 0,
             })
     except Exception as e:
@@ -264,7 +266,8 @@ def force_numeric_cols(df):
     for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
-    # Thru: leave as-is (mixed int/string for tee times), don't force numeric
+    if "Thru" in df.columns:
+        df["Thru"] = pd.to_numeric(df["Thru"], errors="coerce").astype("Int64")
     return df
 
 
@@ -329,24 +332,45 @@ def _fmt_own_pct(v):
 
 
 def golf_dataframe(df, height=None, **kwargs):
-    """Render a golf table. Data stays Int64 for correct sorting.
-    Uses pandas Styler.format() for display formatting — Streamlit
-    renders the formatted values but sorts by the underlying data."""
+    """Render a golf table with proper golf formatting."""
     display = df.copy()
     display = display[[c for c in display.columns if not c.startswith("_")]]
-    display = force_numeric_cols(display)
 
-    # Build format dict for the Styler — apply to ALL matching columns
+    # Force Score, Today, Points, Own %, Pts/$ to numeric for sorting
+    for col in ["Score", "Today", "Points", "Pool Pts", "Own %", "Pts/$"]:
+        if col in display.columns:
+            display[col] = pd.to_numeric(display[col], errors="coerce").astype("Int64")
+
+    # Thru: convert to numeric, then format. Tee times handled below.
+    if "Thru" in display.columns and "tee_time" not in display.columns:
+        display["Thru"] = pd.to_numeric(display["Thru"], errors="coerce").astype("Int64")
+
+    # If tee_time column exists, merge into Thru display then drop
+    if "tee_time" in display.columns:
+        display["Thru"] = pd.to_numeric(display["Thru"], errors="coerce").astype("Int64")
+        # Build the formatted Thru column as strings
+        def _merge_thru(row):
+            if pd.isna(row["Thru"]):
+                tt = row.get("tee_time", "")
+                return tt if tt else "-"
+            n = int(row["Thru"])
+            if n >= 18:
+                return "F"
+            return str(n)
+        display["Thru"] = display.apply(_merge_thru, axis=1)
+        display = display.drop(columns=["tee_time"])
+
+    # Build Styler format dict
     fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
             fmt[col] = _fmt_golf_score
-        elif col == "Thru":
+        elif col == "Thru" and display["Thru"].dtype != object:
+            # Only format if still numeric (no tee times merged)
             fmt[col] = _fmt_thru
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
 
-    # na_rep handles any NA that the formatter doesn't catch
     styled = display.style.format(fmt, na_rep="-", precision=0)
 
     kw = {**kwargs}
@@ -410,7 +434,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "_pos_sort": match["pos_int"] if match["pos_int"] else 999,
                     "Score": score_to_int(match["score"]),
                     "Today": score_to_int(match.get("today", "-")),
-                    "Thru": match["thru"] if match["thru"] else "-",
+                    "Thru": match["thru"],
+                    "tee_time": match.get("tee_time", ""),
                     "Points": pts,
                 })
             else:
@@ -421,7 +446,8 @@ def compute_pool_scores(rosters, golfers_live):
                     "_pos_sort": 999,
                     "Score": score_to_int("-"),
                     "Today": score_to_int("-"),
-                    "Thru": "-",
+                    "Thru": None,
+                    "tee_time": "",
                     "Points": 0,
                 })
             total_pts += golfer_details[-1]["Points"]
@@ -565,7 +591,8 @@ def main():
             "Golfer": g["name"],
             "Score": score_to_int(g["score"]),
             "Today": score_to_int(g.get("today", "-")),
-            "Thru": g["thru"] if g["thru"] else "-",
+            "Thru": g["thru"],
+            "tee_time": g.get("tee_time", ""),
             "Pool Pts": g["points"],
             "Rostered": f"{count}/154",
             "Own %": round(count/154*100),
