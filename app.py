@@ -242,12 +242,16 @@ def score_to_int(score_str):
         return None
 
 
-def force_score_numeric(df):
-    """Force Score and Today columns to numeric dtype so Streamlit sorts as numbers.
-    If any non-numeric value snuck in, coerce it to NaN."""
-    for col in ["Score", "Today"]:
+def force_numeric_cols(df):
+    """Force Score, Today, Thru, Points, and Pool Pts columns to numeric dtype
+    so Streamlit sorts them as numbers, not strings."""
+    for col in ["Score", "Today", "Points", "Pool Pts"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+    if "Thru" in df.columns:
+        # F (finished) = 18 for sorting, "-" = blank
+        df["Thru"] = df["Thru"].replace("F", 18)
+        df["Thru"] = pd.to_numeric(df["Thru"], errors="coerce").astype("Int64")
     return df
 
 
@@ -398,7 +402,7 @@ def main():
     if selected and selected != "-- Show All --" and selected in participant_details:
         st.markdown(f"---")
         detail_df = pd.DataFrame(participant_details[selected]).drop(columns=["_pos_sort"], errors="ignore")
-        detail_df = force_score_numeric(detail_df)
+        detail_df = force_numeric_cols(detail_df)
         total = detail_df["Points"].sum()
         rank = participant_list.index(selected) + 1
         st.markdown(f"### 🔎 {selected}")
@@ -435,7 +439,7 @@ def main():
                 seen.add(g["name"])
     if value_picks:
         value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
-        vp_df = force_score_numeric(pd.DataFrame(value_picks[:12]))
+        vp_df = force_numeric_cols(pd.DataFrame(value_picks[:12]))
         st.dataframe(vp_df, use_container_width=True, hide_index=True)
 
     # ============================================
@@ -468,7 +472,7 @@ def main():
         })
     combined_df = pd.DataFrame(combined_rows)
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
-    combined_df = force_score_numeric(combined_df)
+    combined_df = force_numeric_cols(combined_df)
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # Footer
