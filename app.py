@@ -21,8 +21,8 @@ except ImportError:
 
 
 # === PROJECTED CUT LINE ===
-# Update this as ESPN updates the projected cut. Set to None before cut is projected.
-PROJECTED_CUT = 3  # +3 means golfers at +4 or worse are projected to miss the cut
+# Computed live from the field. Masters rule: top 50 and ties make the cut.
+PROJECTED_CUT = None  # Will be computed dynamically from live scores
 
 
 # === SCORING RULES ===
@@ -216,12 +216,6 @@ def fetch_leaderboard():
             i = j
 
         for g in active:
-            # Check if projected to miss cut
-            score_num = score_to_int(g["score"])
-            proj_mc = False
-            if PROJECTED_CUT is not None and score_num is not None and score_num > PROJECTED_CUT:
-                proj_mc = True
-            pts = 0 if proj_mc else points_for_position(g["pos_int"], None)
             golfers.append({
                 "name": g["name"],
                 "name_norm": g["name_norm"],
@@ -232,8 +226,8 @@ def fetch_leaderboard():
                 "today": g["today"],
                 "thru": g["thru"],
                 "tee_time": g.get("tee_time", ""),
-                "points": pts,
-                "proj_mc": proj_mc,
+                "points": points_for_position(g["pos_int"], None),
+                "proj_mc": False,
             })
 
         for g in inactive:
@@ -252,6 +246,26 @@ def fetch_leaderboard():
             })
     except Exception as e:
         return None, f"Parse error: {e}"
+
+    # Compute projected cut line from live scores (Masters: top 50 and ties)
+    global PROJECTED_CUT
+    active_scores = sorted([score_to_int(g["score"]) for g in golfers
+                           if g["status"] is None and score_to_int(g["score"]) is not None])
+    if len(active_scores) >= 50:
+        PROJECTED_CUT = active_scores[49]  # 50th place score
+    else:
+        PROJECTED_CUT = None
+
+    # Apply projected MC flag and zero points for golfers above the cut
+    if PROJECTED_CUT is not None:
+        for g in golfers:
+            score_num = score_to_int(g["score"])
+            if score_num is not None and score_num > PROJECTED_CUT:
+                g["proj_mc"] = True
+                g["points"] = 0
+            elif g.get("status"):
+                g["proj_mc"] = True
+            # golfers at or below cut keep their points and proj_mc=False
 
     return golfers, event_name
 
@@ -636,7 +650,9 @@ def main():
     # ============================================
     st.markdown("### ⛳ Masters Leaderboard & Ownership (Full Field)")
     if PROJECTED_CUT is not None:
-        st.caption(f"Projected cut: +{PROJECTED_CUT}. Golfers at +{PROJECTED_CUT + 1} or worse highlighted in red (0 pool points).")
+        cut_display = f"+{PROJECTED_CUT}" if PROJECTED_CUT > 0 else ("E" if PROJECTED_CUT == 0 else str(PROJECTED_CUT))
+        over_display = f"+{PROJECTED_CUT + 1}" if PROJECTED_CUT + 1 > 0 else "E"
+        st.caption(f"Projected cut: {cut_display} (top 50 + ties). Golfers at {over_display} or worse highlighted in red (0 pool points).")
     top_golfers = sorted(golfers_live, key=lambda x: (x["pos_int"] if x["pos_int"] else 999))
     combined_rows = []
     for g in top_golfers:
