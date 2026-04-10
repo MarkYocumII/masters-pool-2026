@@ -547,7 +547,7 @@ def main():
             "Pos": g["pos_str"],
             "Golfer": g["name"],
             "Score": score_to_int(g["score"]),
-            "Today": g.get("today", "-"),
+            "Today": score_to_int(g.get("today", "-")),
             "Thru": g["thru"] if g["thru"] else "-",
             "Pool Pts": g["points"],
             "Rostered": f"{count}/154",
