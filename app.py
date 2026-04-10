@@ -373,22 +373,15 @@ def golf_dataframe(df, height=None, **kwargs):
 
     # Today: format scores nicely but keep as string (may contain tee times)
     if "Today" in display.columns:
-        def _fmt_today_str(v):
+        # Convert tee times to "-" so Today only has score values
+        # (tee times already show in Thru column)
+        def _clean_today(v):
             s = str(v).strip()
             if s.startswith("T") and ("AM" in s or "PM" in s):
-                return s  # tee time, pass through
-            if s == "-" or s == "" or s == "None":
-                return "-"
-            if s == "E":
-                return "E"
-            try:
-                n = int(s)
-                if n == 0: return "E"
-                if n > 0: return f"+{n}"
-                return str(n)
-            except ValueError:
-                return s
-        display["Today"] = display["Today"].apply(_fmt_today_str)
+                return None  # tee time -> treat as not started
+            return score_to_int(s)
+        display["Today"] = display["Today"].apply(_clean_today)
+        display["Today"] = pd.to_numeric(display["Today"], errors="coerce").astype("Int64")
 
     # Thru: convert to numeric, then format. Tee times handled below.
     if "Thru" in display.columns and "tee_time" not in display.columns:
@@ -412,9 +405,8 @@ def golf_dataframe(df, height=None, **kwargs):
     # Build Styler format dict
     fmt = {}
     for col in display.columns:
-        if col == "Score":
+        if col in ("Score", "Today"):
             fmt[col] = _fmt_golf_score
-        # Today is pre-formatted as string (scores + tee times), skip Styler
         elif col == "Thru" and display["Thru"].dtype != object:
             # Only format if still numeric (no tee times merged)
             fmt[col] = _fmt_thru
