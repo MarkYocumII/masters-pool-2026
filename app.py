@@ -553,7 +553,6 @@ def compute_pool_scores(rosters, golfers_live):
         participant_scores.append({
             "Participant": participant,
             "Points": total_pts,
-            "EV": round(total_ev, 1),
             "Golfers": len(group),
             "Making Cut": making_cut,
         })
