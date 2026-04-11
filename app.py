@@ -247,20 +247,9 @@ def fetch_leaderboard():
     except Exception as e:
         return None, f"Parse error: {e}", None
 
-    # Compute projected cut line from live scores (Masters: top 50 and ties)
-    active_scores = sorted([score_to_int(g["score"]) for g in golfers
-                           if g["status"] is None and score_to_int(g["score"]) is not None])
-    cut_line = active_scores[49] if len(active_scores) >= 50 else None
-
-    # Apply projected MC flag and zero points for golfers above the cut
-    if cut_line is not None:
-        for g in golfers:
-            score_num = score_to_int(g["score"])
-            if score_num is not None and score_num > cut_line:
-                g["proj_mc"] = True
-                g["points"] = 0
-            elif g.get("status"):
-                g["proj_mc"] = True
+    # Cut has already happened — anyone still active made the cut.
+    # Only golfers with explicit MC/CUT/WD/DQ status score 0.
+    cut_line = None
 
     return golfers, event_name, cut_line
 
