@@ -20,9 +20,9 @@ except ImportError:
     pass
 
 
-# === PROJECTED CUT LINE ===
-# Computed live from the field. Masters rule: top 50 and ties make the cut.
-PROJECTED_CUT = None  # Will be computed dynamically from live scores
+# === CUT LINE (Official after R2) ===
+# ESPN doesn't flag MC golfers for the Masters. Use official list from scoring sheet.
+MC_GOLFERS_NORMALIZED = None  # built at import time below
 
 
 # === SCORING RULES ===
@@ -83,6 +83,22 @@ ALIASES = {
 def resolve_name(name):
     n = norm(name)
     return ALIASES.get(n, n)
+
+
+# === OFFICIAL MC LIST (from Day 2 scoring sheet) ===
+# ESPN doesn't flag MC for the Masters — use official list
+_MC_RAW = [
+    "Daniel Berger", "Akshay Bhatia", "Angel Cabrera", "Fred Couples",
+    "Bryson DeChambeau", "Nico Echavarria", "Ethan Fang", "Ryan Fox",
+    "Max Greyserman", "Harry Hall", "Jackson Herrington", "Nicolai Hojgaard",
+    "Brandon Holtz", "Mason Howell", "Casey Jarvis", "Zach Johnson",
+    "Naoyuki Kataoka", "Michael Kim", "Fifa Laopakdee", "Min Woo Lee",
+    "Robert MacIntyre", "Tom McKibbin", "Rasmus Neergaard-Petersen",
+    "Andrew Novak", "Jose Maria Olazabal", "Carlos Ortiz", "Aldrich Potgieter",
+    "Mateo Pulcini", "Davis Riley", "Vijay Singh", "Cameron Smith",
+    "JJ Spaun", "Sami Valimaki", "Bubba Watson", "Mike Weir", "Danny Willett",
+]
+MC_GOLFERS_NORMALIZED = {resolve_name(n) for n in _MC_RAW}
 
 
 # === FETCH LIVE LEADERBOARD ===
@@ -247,10 +263,25 @@ def fetch_leaderboard():
     except Exception as e:
         return None, f"Parse error: {e}", None
 
-    # Cut has already happened — anyone still active made the cut.
-    # Only golfers with explicit MC/CUT/WD/DQ status score 0.
-    cut_line = None
+    # Apply official MC list (ESPN doesn't flag MC for Masters)
+    for g in golfers:
+        if g["name_norm"] in MC_GOLFERS_NORMALIZED:
+            g["proj_mc"] = True
+            g["points"] = 0
+            g["status"] = "MC"
+        # Also match by fuzzy (in case of name variants)
+        elif not g.get("proj_mc"):
+            gn = g["name_norm"]
+            for mc in MC_GOLFERS_NORMALIZED:
+                gp = set(gn.split())
+                mp = set(mc.split())
+                if len(gp & mp) >= 2:
+                    g["proj_mc"] = True
+                    g["points"] = 0
+                    g["status"] = "MC"
+                    break
 
+    cut_line = None  # not used anymore
     return golfers, event_name, cut_line
 
 
