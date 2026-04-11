@@ -263,25 +263,42 @@ def fetch_leaderboard():
     except Exception as e:
         return None, f"Parse error: {e}", None
 
-    # Apply official MC list (ESPN doesn't flag MC for Masters)
+    # Detect MC: golfers with no R3 tee time AND no R3 holes = missed cut
+    # Also fall back to the hardcoded MC list if R3 data isn't available yet
     for g in golfers:
-        if g["name_norm"] in MC_GOLFERS_NORMALIZED:
-            g["proj_mc"] = True
-            g["points"] = 0
-            g["status"] = "MC"
-        # Also match by fuzzy (in case of name variants)
-        elif not g.get("proj_mc"):
-            gn = g["name_norm"]
-            for mc in MC_GOLFERS_NORMALIZED:
-                gp = set(gn.split())
-                mp = set(mc.split())
-                if len(gp & mp) >= 2:
-                    g["proj_mc"] = True
-                    g["points"] = 0
-                    g["status"] = "MC"
-                    break
+        if g.get("status"):  # already marked WD/DQ/CUT
+            continue
+        # Check: does this golfer have an R3 tee time or R3 holes?
+        # We stored tee_time from the LATEST round — if they have one, they're active
+        has_r3_tee = bool(g.get("tee_time", ""))
+        has_r3_holes = False
+        # Check thru: if they have any holes in current round, they're active
+        if g.get("thru") and g["thru"] is not None:
+            try:
+                if int(g["thru"]) > 0:
+                    has_r3_holes = True
+            except (ValueError, TypeError):
+                pass
 
-    cut_line = None  # not used anymore
+        if not has_r3_tee and not has_r3_holes:
+            # No R3 data — check hardcoded MC list as fallback
+            if g["name_norm"] in MC_GOLFERS_NORMALIZED:
+                g["proj_mc"] = True
+                g["points"] = 0
+                g["status"] = "MC"
+            else:
+                # Fuzzy match against MC list
+                gn = g["name_norm"]
+                for mc in MC_GOLFERS_NORMALIZED:
+                    gp = set(gn.split())
+                    mp = set(mc.split())
+                    if len(gp & mp) >= 2:
+                        g["proj_mc"] = True
+                        g["points"] = 0
+                        g["status"] = "MC"
+                        break
+
+    cut_line = None
     return golfers, event_name, cut_line
 
 
