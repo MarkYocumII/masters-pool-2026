@@ -170,19 +170,13 @@ def fetch_leaderboard():
                             if ("AM" in dv or "PM" in dv or "PDT" in dv or
                                 "PST" in dv or "EDT" in dv or "EST" in dv):
                                 try:
-                                    # Determine timezone offset to convert to EST/EDT
-                                    offset_hours = 0
-                                    if " PDT " in dv:
-                                        offset_hours = 3  # PDT -> EDT = +3
-                                    elif " PST " in dv:
-                                        offset_hours = 3  # PST -> EST = +3
-                                    # EDT/EST already Eastern, no offset
+                                    # ESPN labels times as PDT but they are already Eastern
+                                    # No timezone conversion needed
                                     cleaned = dv
                                     for tz in (" PDT ", " PST ", " EDT ", " EST "):
                                         cleaned = cleaned.replace(tz, " ")
                                     dt = __import__("datetime").datetime.strptime(
                                         cleaned, "%a %b %d %H:%M:%S %Y")
-                                    dt = dt + __import__("datetime").timedelta(hours=offset_hours)
                                     h = dt.hour
                                     ampm = "AM" if h < 12 else "PM"
                                     if h > 12: h -= 12
@@ -432,15 +426,32 @@ def golf_dataframe(df, height=None, **kwargs):
     if "Thru" in display.columns:
         def _thru_to_int(v):
             if pd.isna(v) or v is None:
-                return 0
+                return 0  # MC or no data = 0
             try:
                 n = int(v)
                 if n >= 18:
-                    return 19
+                    return 19  # F
                 return n
             except (ValueError, TypeError):
                 return 0
         display["Thru"] = display["Thru"].apply(_thru_to_int).astype("Int64")
+
+    # Assign tee time sort values: 20 + minutes from midnight for ordering
+    # Latest tee time = highest number
+    if tee_map:
+        import re as _re
+        for idx, tee_str in tee_map.items():
+            if idx in display.index and "Thru" in display.columns:
+                # Parse "T2:50 PM" to a sort value (20 + hour*60 + minute) / 100
+                m = _re.search(r'T(\d{1,2}):(\d{2})\s*(AM|PM)', tee_str)
+                if m:
+                    hr = int(m.group(1))
+                    mn = int(m.group(2))
+                    ap = m.group(3)
+                    if ap == 'PM' and hr != 12: hr += 12
+                    if ap == 'AM' and hr == 12: hr = 0
+                    sort_val = 20 + hr + mn / 60.0  # 20+ ensures after F(19)
+                    display.at[idx, "Thru"] = int(sort_val)
 
     # Today: convert to int. MC golfers get special value 998 (displayed as "CUT").
     # Not started active golfers get 999 (displayed as "-").
@@ -473,39 +484,45 @@ def golf_dataframe(df, height=None, **kwargs):
     if "Today" in display.columns:
         display["Today"] = display["Today"].astype("Int64")
 
-    # Pre-format Thru: merge tee times (can't do in Styler since it only gets the int value)
-    if "Thru" in display.columns and tee_map:
-        def _fmt_thru_with_tee(idx, val):
-            if idx in tee_map:
-                return tee_map[idx]
-            if pd.isna(val):
-                return "-"
-            n = int(val)
-            if n == 0: return "-"
-            if n >= 19: return "F"
-            return str(n)
-        display["Thru"] = [_fmt_thru_with_tee(idx, display.at[idx, "Thru"]) for idx in display.index]
+    # Thru Styler: 0="-"(MC/cut), 1-18=hole, 19=F, 20+=tee time
+    # Store the tee_map for the formatter
+    _thru_tee_display = {}
+    if tee_map:
+        for idx, tee_str in tee_map.items():
+            _thru_tee_display[idx] = tee_str
 
-    # Thru Styler (only if Thru is still numeric — no tee times merged)
     def _fmt_thru_int(v):
         if pd.isna(v):
             return "-"
         try:
             n = int(v)
             if n == 0: return "-"
-            if n >= 19: return "F"
+            if n == 19: return "F"
+            if n >= 20: return "-"  # tee time placeholder — will be overridden below
             return str(n)
         except (ValueError, TypeError):
-            return str(v)  # tee time string passes through
+            return str(v)
+
+    # Pre-format Thru to display strings (tee times can't go through Styler)
+    if "Thru" in display.columns:
+        def _thru_display(idx, val):
+            if idx in _thru_tee_display:
+                return _thru_tee_display[idx]
+            if pd.isna(val): return "-"
+            n = int(val)
+            if n == 0: return "-"
+            if n == 19: return "F"
+            if n >= 20: return "-"
+            return str(n)
+        display["Thru"] = [_thru_display(idx, display.at[idx, "Thru"]) for idx in display.index]
 
     fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
             fmt[col] = _fmt_golf_score
-        elif col == "Thru" and display["Thru"].dtype != object:
-            fmt[col] = _fmt_thru_int
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
+    # Thru is now a pre-formatted string — skip Styler for it
 
     styled = display.style.format(fmt, na_rep="-", precision=0)
 
