@@ -371,8 +371,10 @@ def _fmt_golf_score(v):
     if pd.isna(v):
         return "-"
     n = int(v)
-    if n == 999 or n == -999:
+    if n == 999:
         return "-"
+    if n == 998:
+        return "CUT"
     if n == 0:
         return "E"
     if n > 0:
@@ -411,34 +413,50 @@ def golf_dataframe(df, height=None, **kwargs):
             display[col] = pd.to_numeric(display[col], errors="coerce").astype("Int64")
 
     # Today: format scores nicely but keep as string (may contain tee times)
-    if "Today" in display.columns:
-        # Same as Score: Int64 with 999 sentinel for not-started.
-        # Tee times -> 999 (show in Thru column instead).
-        # Styler formats: 0->E, 999->"-", negative as-is, positive->+N
-        def _today_to_int(v):
-            s = str(v).strip()
-            if s.startswith("T") and ("AM" in s or "PM" in s):
-                return 999
-            n = score_to_int(s)
-            return n if n is not None else 999
-        display["Today"] = display["Today"].apply(_today_to_int).astype(int)
-
-    # Drop tee_time column (shown via Thru formatting)
-    if "tee_time" in display.columns:
+    # Thru: merge tee times from tee_time column, then convert to int
+    if "tee_time" in display.columns and "Thru" in display.columns:
+        # Where Thru is None/NA and tee_time exists, use tee_time as display
+        # Store tee time strings, then convert Thru to int with tee_time=0
+        tee_map = {}
+        for idx, row in display.iterrows():
+            tt = row.get("tee_time", "")
+            thru = row.get("Thru")
+            if tt and (pd.isna(thru) or thru is None or thru == 0):
+                tee_map[idx] = tt
         display = display.drop(columns=["tee_time"])
+    else:
+        tee_map = {}
+        if "tee_time" in display.columns:
+            display = display.drop(columns=["tee_time"])
 
     if "Thru" in display.columns:
         def _thru_to_int(v):
             if pd.isna(v) or v is None:
-                return 0  # not started = 0
+                return 0
             try:
                 n = int(v)
                 if n >= 18:
-                    return 19  # F sorts after 18
+                    return 19
                 return n
             except (ValueError, TypeError):
                 return 0
         display["Thru"] = display["Thru"].apply(_thru_to_int).astype("Int64")
+
+    # Today: convert to int. MC golfers get special value 998 (displayed as "CUT").
+    # Not started active golfers get 999 (displayed as "-").
+    if "Today" in display.columns:
+        def _today_to_int(v):
+            s = str(v).strip()
+            if s.startswith("T") and ("AM" in s or "PM" in s):
+                return 999  # not started
+            n = score_to_int(s)
+            return n if n is not None else 999
+        display["Today"] = display["Today"].apply(_today_to_int).astype(int)
+
+    # Mark MC golfers' Today as 998 (will display as "CUT")
+    if "_proj_mc" in display.columns and "Today" in display.columns:
+        mc_mask = display["_proj_mc"].fillna(False)
+        display.loc[mc_mask, "Today"] = 998
 
     # MC indicator on golfer names
     if "_proj_mc" in display.columns:
@@ -451,27 +469,40 @@ def golf_dataframe(df, height=None, **kwargs):
     if "Score" in display.columns:
         display["Score"] = display["Score"].replace(999, pd.NA).astype("Int64")
 
-    # Today: 999 -> 0 (not started = even par for today, sorts as zero, displays as "E")
+    # Today: keep as int. 999=not started ("-"), 998=MC ("CUT"), 0=E, others=score
     if "Today" in display.columns:
-        display["Today"] = display["Today"].replace(999, 0).astype("Int64")
+        display["Today"] = display["Today"].astype("Int64")
 
-    # Styler: format display values while Arrow keeps numeric data for sorting
-    # Thru Styler: 0 -> "-", 19 -> "F", 1-18 -> hole number
+    # Pre-format Thru: merge tee times (can't do in Styler since it only gets the int value)
+    if "Thru" in display.columns and tee_map:
+        def _fmt_thru_with_tee(idx, val):
+            if idx in tee_map:
+                return tee_map[idx]
+            if pd.isna(val):
+                return "-"
+            n = int(val)
+            if n == 0: return "-"
+            if n >= 19: return "F"
+            return str(n)
+        display["Thru"] = [_fmt_thru_with_tee(idx, display.at[idx, "Thru"]) for idx in display.index]
+
+    # Thru Styler (only if Thru is still numeric — no tee times merged)
     def _fmt_thru_int(v):
         if pd.isna(v):
             return "-"
-        n = int(v)
-        if n == 0:
-            return "-"
-        if n >= 19:
-            return "F"
-        return str(n)
+        try:
+            n = int(v)
+            if n == 0: return "-"
+            if n >= 19: return "F"
+            return str(n)
+        except (ValueError, TypeError):
+            return str(v)  # tee time string passes through
 
     fmt = {}
     for col in display.columns:
         if col in ("Score", "Today"):
             fmt[col] = _fmt_golf_score
-        elif col == "Thru":
+        elif col == "Thru" and display["Thru"].dtype != object:
             fmt[col] = _fmt_thru_int
         elif col == "Own %":
             fmt[col] = _fmt_own_pct
