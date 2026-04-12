@@ -751,39 +751,6 @@ def main():
         golf_dataframe(detail_df, use_container_width=True, hide_index=True)
 
     # ============================================
-    # BEST VALUE PICKS (most points per dollar spent)
-    # ============================================
-    st.markdown("### 💰 Best Value Picks (Points per Dollar)")
-    value_picks = []
-    seen = set()
-    for g in golfers_live:
-        if g["points"] <= 0:
-            continue
-        matches = rosters[rosters["Golfer_Norm"] == g["name_norm"]]
-        if matches.empty:
-            for _, r in rosters.iterrows():
-                rp = set(r["Golfer_Norm"].split())
-                gp = set(g["name_norm"].split())
-                if len(rp & gp) >= 2:
-                    matches = rosters[rosters["Golfer_Norm"] == r["Golfer_Norm"]]
-                    break
-        if not matches.empty and g["name"] not in seen:
-            price = matches.iloc[0]["Price"]
-            if price > 0:
-                value_picks.append({
-                    "Golfer": g["name"],
-                    "Score": score_to_int(g["score"]),
-                    "Pool Pts": g["points"],
-                    "Price": f"${price:.2f}",
-                    "Pts/$": round(g["points"] / price, 1),
-                })
-                seen.add(g["name"])
-    if value_picks:
-        value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
-        vp_df = force_numeric_cols(pd.DataFrame(value_picks[:12]))
-        golf_dataframe(vp_df, use_container_width=True, hide_index=True)
-
-    # ============================================
     # MASTERS LEADERBOARD + OWNERSHIP (combined)
     # ============================================
     st.markdown("### ⛳ Masters Leaderboard & Ownership (Full Field)")
@@ -821,6 +788,39 @@ def main():
     combined_df = combined_df.sort_values(["#"]).drop(columns=["#"]).reset_index(drop=True)
     combined_df = force_numeric_cols(combined_df)
     golf_dataframe(combined_df, use_container_width=True, hide_index=True)
+
+    # ============================================
+    # BEST VALUE PICKS (most points per dollar spent)
+    # ============================================
+    st.markdown("### 💰 Best Value Picks (Points per Dollar)")
+    value_picks = []
+    seen = set()
+    for g in golfers_live:
+        if g["points"] <= 0:
+            continue
+        matches = rosters[rosters["Golfer_Norm"] == g["name_norm"]]
+        if matches.empty:
+            for _, r in rosters.iterrows():
+                rp = set(r["Golfer_Norm"].split())
+                gp = set(g["name_norm"].split())
+                if len(rp & gp) >= 2:
+                    matches = rosters[rosters["Golfer_Norm"] == r["Golfer_Norm"]]
+                    break
+        if not matches.empty and g["name"] not in seen:
+            price = matches.iloc[0]["Price"]
+            if price > 0:
+                value_picks.append({
+                    "Golfer": g["name"],
+                    "Score": score_to_int(g["score"]),
+                    "Pool Pts": g["points"],
+                    "Price": f"${price:.2f}",
+                    "Pts/$": round(g["points"] / price, 1),
+                })
+                seen.add(g["name"])
+    if value_picks:
+        value_picks.sort(key=lambda x: x["Pts/$"], reverse=True)
+        vp_df = force_numeric_cols(pd.DataFrame(value_picks[:12]))
+        golf_dataframe(vp_df, use_container_width=True, hide_index=True)
 
     # Footer
     st.markdown("---")
