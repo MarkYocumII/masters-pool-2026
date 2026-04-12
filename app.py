@@ -101,6 +101,40 @@ _MC_RAW = [
 MC_GOLFERS_NORMALIZED = {resolve_name(n) for n in _MC_RAW}
 
 
+# === R4 TEE TIMES (hardcoded — ESPN API lagging) ===
+# Source: golf.com/masters official pairings, April 12, 2026
+_R4_TEE_TIMES = {
+    "Aaron Rai": "T9:06 AM", "Charl Schwartzel": "T9:06 AM",
+    "Gary Woodland": "T9:17 AM", "Kurt Kitayama": "T9:17 AM",
+    "Jon Rahm": "T9:28 AM", "Sergio Garcia": "T9:28 AM",
+    "Si Woo Kim": "T9:39 AM", "Rasmus Hojgaard": "T9:39 AM",
+    "Keegan Bradley": "T9:50 AM", "Dustin Johnson": "T9:50 AM",
+    "Matt McCarty": "T10:01 AM", "Corey Conners": "T10:01 AM",
+    "Viktor Hovland": "T10:12 AM", "Justin Thomas": "T10:12 AM",
+    "Alex Noren": "T10:23 AM", "Maverick McNealy": "T10:23 AM",
+    "Adam Scott": "T10:45 AM", "Marco Penge": "T10:45 AM",
+    "Harris English": "T10:56 AM", "Sam Stevens": "T10:56 AM",
+    "Brian Harman": "T11:07 AM", "Jordan Spieth": "T11:07 AM",
+    "Sungjae Im": "T11:18 AM", "Hideki Matsuyama": "T11:18 AM",
+    "Sepp Straka": "T11:29 AM", "Jacob Bridgeman": "T11:29 AM",
+    "Chris Gotterup": "T11:40 AM", "Kristoffer Reitan": "T11:40 AM",
+    "Michael Brennan": "T11:51 AM", "Max Homa": "T11:51 AM",
+    "Nick Taylor": "T12:13 PM", "Matt Fitzpatrick": "T12:13 PM",
+    "Ludvig Aberg": "T12:24 PM", "Brian Campbell": "T12:24 PM",
+    "Tyrrell Hatton": "T12:35 PM", "Tommy Fleetwood": "T12:35 PM",
+    "Brooks Koepka": "T12:46 PM", "Wyndham Clark": "T12:46 PM",
+    "Ryan Gerard": "T12:57 PM", "Xander Schauffele": "T12:57 PM",
+    "Jake Knapp": "T1:08 PM", "Ben Griffin": "T1:08 PM",
+    "Patrick Reed": "T1:30 PM", "Collin Morikawa": "T1:30 PM",
+    "Patrick Cantlay": "T1:41 PM", "Russell Henley": "T1:41 PM",
+    "Scottie Scheffler": "T1:52 PM", "Haotong Li": "T1:52 PM",
+    "Jason Day": "T2:03 PM", "Justin Rose": "T2:03 PM",
+    "Sam Burns": "T2:14 PM", "Shane Lowry": "T2:14 PM",
+    "Cameron Young": "T2:25 PM", "Rory McIlroy": "T2:25 PM",
+}
+R4_TEE_NORMALIZED = {resolve_name(n): t for n, t in _R4_TEE_TIMES.items()}
+
+
 # === FETCH LIVE LEADERBOARD ===
 @st.cache_data(ttl=180)
 def fetch_leaderboard():
@@ -184,6 +218,12 @@ def fetch_leaderboard():
                                     tee_time_str = f"T{h}:{dt.minute:02d} {ampm}"
                                 except Exception:
                                     pass
+
+            # Fallback: use hardcoded R4 tee times if API doesn't have them
+            if not tee_time_str and thru is None:
+                golfer_norm = resolve_name(name)
+                if golfer_norm in R4_TEE_NORMALIZED:
+                    tee_time_str = R4_TEE_NORMALIZED[golfer_norm]
 
             # Today's round score
             today = tee_time_str if tee_time_str else "-"
