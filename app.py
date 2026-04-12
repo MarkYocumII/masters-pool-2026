@@ -617,8 +617,22 @@ def compute_pool_scores(rosters, golfers_live):
         participant_details[participant] = sorted(golfer_details, key=lambda x: (-x["Points"], x["Score"] if x["Score"] is not None else 999, x["_pos_sort"]))
 
     df_scores = pd.DataFrame(participant_scores).sort_values("Points", ascending=False).reset_index(drop=True)
-    df_scores.index = df_scores.index + 1
-    df_scores.index.name = "Rank"
+
+    # Compute tied ranks
+    ranks = []
+    pos = 1
+    i = 0
+    pts_list = df_scores["Points"].tolist()
+    while i < len(pts_list):
+        j = i
+        while j < len(pts_list) and pts_list[j] == pts_list[i]:
+            j += 1
+        tied = j - i > 1
+        for k in range(i, j):
+            ranks.append(f"T{pos}" if tied else str(pos))
+        pos = j + 1
+        i = j
+    df_scores.insert(0, "Rank", ranks)
 
     return df_scores, participant_details
 
@@ -679,6 +693,7 @@ def main():
         display_df if selected == "-- Show All --" or not selected else df_scores,
         use_container_width=True,
         height=min(700, 35 * min(len(df_scores), 20) + 38),
+        hide_index=True,
     )
 
     # Show roster detail for selected participant
@@ -688,9 +703,11 @@ def main():
         # _proj_mc handled inside golf_dataframe
         detail_df = force_numeric_cols(detail_df)
         total = detail_df["Points"].sum()
-        rank = participant_list.index(selected) + 1
+        # Get tied rank from df_scores
+        rank_row = df_scores[df_scores["Participant"] == selected]
+        rank_str = rank_row["Rank"].values[0] if len(rank_row) > 0 else "?"
         st.markdown(f"### 🔎 {selected}")
-        st.markdown(f"**Rank #{rank}** — {len(detail_df)} golfers — **{total} points**")
+        st.markdown(f"**Rank {rank_str}** — {len(detail_df)} golfers — **{total} points**")
         golf_dataframe(detail_df, use_container_width=True, hide_index=True)
 
     # ============================================
